@@ -3804,12 +3804,15 @@ test_branch_dispatch_classifies_main_only_rows_and_writes_the_eligible_snapshot(
   local repo home out status
   repo="$TMP_ROOT/dispatch-classify-root"
   home="$TMP_ROOT/dispatch-classify-home"
-  mkdir -p "$repo/.pi/extensions/lib" "$home/state" "$home/projects/approved"
+  mkdir -p "$repo/.pi/extensions/lib" "$home/state" "$home/data/scout-complete" "$home/projects/approved"
   cp "$ROOT/.pi/extensions/lib/fm-branch-dispatch.ts" "$repo/.pi/extensions/lib/fm-branch-dispatch.ts"
   cp "$ROOT/.pi/extensions/lib/fm-native-contract.ts" "$repo/.pi/extensions/lib/fm-native-contract.ts"
   cp "$ROOT/.pi/extensions/lib/fm-async-exec.ts" "$repo/.pi/extensions/lib/fm-async-exec.ts"
   cp "$ROOT/.pi/extensions/lib/fm-branch-model-picker.ts" "$repo/.pi/extensions/lib/fm-branch-model-picker.ts"
-  printf 'project=%s/projects/approved\nwindow=fm-window\n' "$home" > "$home/state/task-a.meta"
+  printf 'project=%s/projects/approved\nwindow=fm-window\nkind=ship\n' "$home" > "$home/state/task-a.meta"
+  printf 'project=%s/projects/approved\nwindow=fm-scout-complete\nkind=scout\n' "$home" > "$home/state/scout-complete.meta"
+  printf 'done: full report ready\n' > "$home/state/scout-complete.status"
+  printf '# Complete scout report\n' > "$home/data/scout-complete/report.md"
   LIB="$repo/.pi/extensions/lib/fm-branch-dispatch.ts" FM_HOME="$home" GRANT="$ROOT/bin/fm-wake-grant.sh" \
     node --input-type=module > "$TMP_ROOT/node-output" 2>&1 <<'EOF'
 import { pathToFileURL } from "node:url";
@@ -3847,6 +3850,57 @@ for (const row of mainOnlyRows) {
   if (scope.corrupted) throw new Error(`an ordinary main-only row must not read as corrupted: ${row}`);
 }
 
+// A completed scout with a full report and live metadata stays main-owned even
+// when no backlog file lists it. Both its immediate signal and later stale
+// alias keep the report, captain-call gate, and guarded cleanup in one main
+// lifecycle, while unrelated work and a heartbeat remain branch-ownable.
+if (fs.existsSync(`${process.env.FM_HOME}/data/backlog.md`)) {
+  throw new Error("scout routing fixture unexpectedly has a backlog list");
+}
+writeFileSync(
+  `${state}/.wake-queue`,
+  [
+    "1\t1\tsignal\tscout-complete.status\tsignal: scout-complete.status",
+    "1\t2\tsignal\ttask-a.status\tsignal: routine follow-up",
+  ].join("\n"),
+);
+const scoutSignalMixed = scopeForUnreadWake(state, false);
+if (!scoutSignalMixed.eligible || scoutSignalMixed.eligibleSeqs.join(",") !== "2" || scoutSignalMixed.corrupted) {
+  throw new Error(`a completed scout signal changed unrelated branch eligibility: ${JSON.stringify(scoutSignalMixed)}`);
+}
+if (scoutSignalMixed.mainOwnedKeys.join(",") !== "scout-complete.status" ||
+  scoutSignalMixed.needsDecisionKeys.length !== 0) {
+  throw new Error(`a completed scout signal was not independently main-owned: ${JSON.stringify(scoutSignalMixed)}`);
+}
+writeFileSync(
+  `${state}/.wake-queue`,
+  [
+    "1\t1\tstale\tfm-scout-complete\tstale: fm-scout-complete",
+    "1\t2\tsignal\ttask-a.status\tsignal: routine follow-up",
+  ].join("\n"),
+);
+const scoutStaleMixed = scopeForUnreadWake(state, false);
+if (!scoutStaleMixed.eligible || scoutStaleMixed.eligibleSeqs.join(",") !== "2" ||
+  scoutStaleMixed.mainOwnedKeys.join(",") !== "fm-scout-complete") {
+  throw new Error(`a completed scout stale alias was not independently main-owned: ${JSON.stringify(scoutStaleMixed)}`);
+}
+if (scoutStaleMixed.taskByWakeKey["fm-scout-complete"] !== "scout-complete") {
+  throw new Error(`a completed scout stale alias lost task identity: ${JSON.stringify(scoutStaleMixed)}`);
+}
+writeFileSync(
+  `${state}/.wake-queue`,
+  [
+    "1\t1\theartbeat\theartbeat\theartbeat",
+    "1\t2\tsignal\tscout-complete.status\tsignal: scout-complete.status",
+    "1\t3\tsignal\ttask-a.status\tsignal: routine follow-up",
+  ].join("\n"),
+);
+const scoutHeartbeatMixed = scopeForUnreadWake(state, true);
+if (!scoutHeartbeatMixed.eligible || scoutHeartbeatMixed.eligibleSeqs.join(",") !== "1,3" ||
+  scoutHeartbeatMixed.mainOwnedKeys.join(",") !== "scout-complete.status") {
+  throw new Error(`a main-owned scout vetoed or rode the heartbeat: ${JSON.stringify(scoutHeartbeatMixed)}`);
+}
+
 // A needs-decision signal row is a main-only class too, marked by payload
 // rather than kind (docs/pi-supervision-branch.md "Autonomy"): it is excluded
 // from eligibleSeqs and named in needsDecisionKeys. A later stale row under the
@@ -3866,8 +3920,9 @@ if (!needsDecisionMixed.eligible) {
 if (needsDecisionMixed.eligibleSeqs.join(",") !== "2") {
   throw new Error(`a needs-decision row must be excluded from eligibleSeqs: ${JSON.stringify(needsDecisionMixed)}`);
 }
-if (needsDecisionMixed.needsDecisionKeys.join(",") !== "task-a.status") {
-  throw new Error(`needsDecisionKeys must name the excluded row: ${JSON.stringify(needsDecisionMixed)}`);
+if (needsDecisionMixed.needsDecisionKeys.join(",") !== "task-a.status" ||
+  needsDecisionMixed.mainOwnedKeys.join(",") !== "task-a.status") {
+  throw new Error(`decision-owned indexes must name the excluded row: ${JSON.stringify(needsDecisionMixed)}`);
 }
 if (needsDecisionMixed.taskByWakeKey["task-a.status"] !== "task-a" ||
   needsDecisionMixed.taskByWakeKey["fm-window"] !== "task-a") {
@@ -4110,7 +4165,7 @@ EOF
   status=$?
   out=$(cat "$TMP_ROOT/node-output")
   expect_code 0 "$status" "main-only classification and eligible-row snapshot contract must hold: $out"
-  pass "scopeForUnreadWake excludes every main-only class without vetoing eligible task-local rows, and writes the eligible snapshot"
+  pass "scopeForUnreadWake keeps decisions and scout lifecycles main-owned without vetoing eligible task-local rows, and writes the eligible snapshot"
 }
 
 # The model picker's bounded scrolling and its search ranking are Pi's own
