@@ -551,6 +551,14 @@ if (scout.offers.length !== 1 || scout.offers[0].eligible !== false) {
 if (!scout.mainPrompt.includes("FIRSTMATE WATCHER WAKE") || !scout.mainPrompt.includes(scoutReason)) {
   throw new Error(`a completed scout did not reach main: ${scout.mainPrompt}`);
 }
+writeFileSync(`${state}/scout-working.meta`, "project=/projects/approved\nwindow=fm-scout-working\nkind=scout\n");
+writeFileSync(`${state}/scout-working.status`, "working: audit still running\n");
+const workingReason = "signal: scout-working.status";
+const workingQueue = "1\t1\tsignal\tscout-working.status\tsignal: scout-working.status\n";
+const workingScout = await runScenario(true, workingReason, workingQueue);
+if (workingScout.offers.length !== 1 || workingScout.offers[0].eligible !== true || workingScout.mainPrompt !== "") {
+  throw new Error(`an active scout did not remain branch-ownable: ${JSON.stringify(workingScout)}`);
+}
 writeFileSync(process.env.FM_STOP_FILE, "stop\n");
 process.exit(0);
 EOF
