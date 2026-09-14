@@ -608,8 +608,8 @@ export default function (pi: ExtensionAPI) {
     const isCheckTrigger = /^check:/.test(message);
     const scope = scopeForUnreadWake(state, heartbeat);
     // A signal/stale close for any main-owned task gets the identical treatment
-    // as a check-kind trigger. This includes decision-owned rows and every
-    // scout lifecycle row: until that row is read, a later signal or stale
+    // as a check-kind trigger. This includes decision-owned rows and completed
+    // scout lifecycle rows: until that row is read, a later signal or stale
     // trigger for the same task stays on main. Other tasks and heartbeat
     // handling remain independent.
     const triggerKeys = /^signal:/.test(message)

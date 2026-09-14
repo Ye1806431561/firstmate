@@ -58,7 +58,7 @@ test_branch_prompt_is_byte_stable_and_above_cache_floor() {
     *) fail "branch prompt lost the copy-or-abstain PR identity rule" ;;
   esac
   case "$out_a" in
-    *"Never close a ship or scout backlog row directly"*"successful \`bin/fm-teardown.sh\` owns its completion transition"*) ;;
+    *"Never close a scout backlog row directly"*"successful \`bin/fm-teardown.sh\` owns its completion transition"*) ;;
     *) fail "branch prompt lost the task-completion ownership rule" ;;
   esac
   pass "branch prompt is byte-stable across homes, cwd, timezone, and time, above the cache floor"
