@@ -517,7 +517,7 @@ reconcile_direct_child_locked() { # <id> <meta> <secondmate-id-or-empty> <timeou
   # delivery above, but a delivered done scout still needs a local cleanup
   # reminder until its own home retires the task records.
   if [ -n "$ledger_line" ]; then
-    if [ "$kind" = scout ] && [ "$(status_line_verb "$ledger_line")" = done ]; then
+    if [ "$kind" = scout ] && [ "$(status_line_verb "$ledger_line")" = 'done' ]; then
       incarnation=$(meta_incarnation "$meta")
       fingerprint=$(sha256_text "$incarnation|$id|done|ledger|$ledger_line")
       queue_scout_cleanup_reminder "$id" "$fingerprint" || true
@@ -546,7 +546,7 @@ reconcile_direct_child_locked() { # <id> <meta> <secondmate-id-or-empty> <timeou
   fi
   ensure_record "$fingerprint" "$id" "$incarnation" "$state" "$outcome_key" direct "upstream" "$pr" "$(sha256_text "$last")" || return 1
   if [ -z "$RECORD_PENDING" ]; then
-    if [ "$kind" = scout ] && [ "$state" = done ] \
+    if [ "$kind" = scout ] && [ "$state" = 'done' ] \
        && { { [ -f "$RECORD_PRESENTED" ] && [ ! -L "$RECORD_PRESENTED" ]; } \
          || { [ -f "$RECORD_REPORTED" ] && [ ! -L "$RECORD_REPORTED" ]; }; }; then
       queue_scout_cleanup_reminder "$id" "$fingerprint" || true
@@ -560,13 +560,13 @@ reconcile_direct_child_locked() { # <id> <meta> <secondmate-id-or-empty> <timeou
       notice_parent_report_failed "$RECORD_PENDING" "$fingerprint" \
         "inactive terminal outcome needs parent report: child=$id state=$state"
     fi
-    if [ "$kind" = scout ] && [ "$state" = done ]; then
+    if [ "$kind" = scout ] && [ "$state" = 'done' ]; then
       queue_scout_cleanup_reminder "$id" "$fingerprint" || true
     fi
     return 0
   fi
   record_phase_set "$RECORD_PENDING" presentation || return 1
-  if [ "$kind" = scout ] && [ "$state" = done ]; then
+  if [ "$kind" = scout ] && [ "$state" = 'done' ]; then
     payload=$(scout_cleanup_payload "$id") || return 1
   else
     payload="inactive terminal outcome awaiting captain presentation: child=$id state=$state"
