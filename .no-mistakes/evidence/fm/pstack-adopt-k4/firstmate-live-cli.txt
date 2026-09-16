@@ -1,0 +1,34 @@
+SCENARIO new task briefs
+ship engineering_sections=1 definitions_of_done=1
+# Engineering practice
+Before planning or editing, read and follow `/Users/pingu/.no-mistakes/worktrees/05287d4e04a1/01M2NDSHXTTQ4GC88Z5K0AW7GB/.agents/skills/engineering-practice/SKILL.md`.
+The skill owns the task-proportional minimal-change, impact and history investigation, and completion-evidence procedure; keep that procedure out of this launch contract.
+
+scout engineering_sections=1 definitions_of_done=1
+# Engineering practice
+Before planning or editing, read and follow `/Users/pingu/.no-mistakes/worktrees/05287d4e04a1/01M2NDSHXTTQ4GC88Z5K0AW7GB/.agents/skills/engineering-practice/SKILL.md`.
+The skill owns the task-proportional minimal-change, impact and history investigation, and completion-evidence procedure; keep that procedure out of this launch contract.
+
+
+SCENARIO secondmate boundary
+secondmate engineering_sections=0 supervisor_contract=1
+# Operating model
+You are in an isolated firstmate home. The local `AGENTS.md` is your job description, and your local `data/`, `state/`, `config/`, and `projects/` dirs are yours to operate.
+This domain has no separate project clones: its subject is the firstmate repo this home lives in, and its crews take pooled worktrees of that repo.
+Delegate project work to your own crewmates with the normal firstmate lifecycle: brief, spawn, status, watcher, steer, teardown, and recovery.
+Do not invent a second delegation system.
+You do not generate your own work.
+
+SCENARIO promoted scout contract
+engineering_sections=1 definitions_of_done=1 intent_occurrences=1
+# Engineering practice
+Before planning or editing, read and follow `/Users/pingu/.no-mistakes/worktrees/05287d4e04a1/01M2NDSHXTTQ4GC88Z5K0AW7GB/.agents/skills/engineering-practice/SKILL.md`.
+The skill owns the task-proportional minimal-change, impact and history investigation, and completion-evidence procedure; keep that procedure out of this launch contract.
+
+Delivery contract: mode=direct-PR
+kind=ship
+mode=direct-PR
+yolo=off
+Do NOT run /no-mistakes. The configured merge authority decides whether to merge the PR; firstmate relays the outcome.
+
+LIVE_ASSERTIONS=PASS
