@@ -441,6 +441,37 @@ test_ship_project_memory_wording() {
   pass "fm-brief.sh: ship project-memory wording carries the AGENTS.md authoring bar"
 }
 
+test_engineering_practice_is_loaded_only_for_task_workers() {
+  local home id brief kind skill
+  home="$TMP_ROOT/engineering-practice-home"
+  skill="$ROOT/.agents/skills/engineering-practice/SKILL.md"
+  mkdir -p "$home/data"
+  assert_present "$skill" "engineering-practice skill is missing"
+
+  for kind in ship scout; do
+    id="brief-engineering-$kind"
+    if [ "$kind" = scout ]; then
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" sample --scout >/dev/null 2>&1
+    else
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" sample --mode direct-PR >/dev/null 2>&1
+    fi
+    brief="$home/data/$id/brief.md"
+    assert_grep '# Engineering practice' "$brief" \
+      "$kind brief did not expose the task-scoped engineering pointer"
+    assert_grep "Before planning or editing, read and follow \`$skill\`." "$brief" \
+      "$kind brief did not load the engineering skill before work"
+    [ "$(grep -c '^# Engineering practice$' "$brief")" -eq 1 ] \
+      || fail "$kind brief rendered more than one engineering-practice section"
+  done
+
+  FM_HOME="$home" FM_SECONDMATE_CHARTER='Supervise assigned work.' \
+    "$ROOT/bin/fm-brief.sh" brief-engineering-secondmate --secondmate --no-projects >/dev/null 2>&1
+  brief="$home/data/brief-engineering-secondmate/brief.md"
+  assert_no_grep 'engineering-practice/SKILL.md' "$brief" \
+    "secondmate charter received a task-worker engineering procedure"
+  pass "fm-brief.sh: ship and scout workers load the engineering skill without widening the secondmate role"
+}
+
 test_herdr_lab_contract_is_explicit_and_complete() {
   local home id brief
   home="$TMP_ROOT/herdr-lab-home"
@@ -913,6 +944,7 @@ test_faster_paths_use_configured_authority_without_stacked_review
 test_no_mistakes_dod_wording
 test_ask_user_escalation_format
 test_ship_project_memory_wording
+test_engineering_practice_is_loaded_only_for_task_workers
 test_herdr_lab_contract_is_explicit_and_complete
 test_herdr_lab_contract_quotes_foreign_firstmate_path
 test_herdr_lab_omission_is_loud_for_ship_and_scout
