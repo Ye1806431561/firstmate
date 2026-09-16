@@ -539,6 +539,7 @@ Use its scaffold as the contract, then fill `## Captain's intent` (`{TASK}`) wit
 Fill `## Firstmate spec` (`{FIRSTMATE_SPEC}`) with only the build instructions that ask requires, naming what stays out of scope when the ask is narrow; a generalization, consistency sweep, or extra hardening the captain did not ask for is follow-up work to note, not scope to add.
 `bin/fm-dod-lib.sh` owns what a no-mistakes worker may pass as `--intent` and its rule that the string must be self-sufficient.
 Keep additions task-specific rather than repeating lifecycle instructions, and alter generated sections only when the task genuinely differs from the standard shape.
+`bin/fm-brief.sh` and `bin/fm-promote.sh` embed the `engineering-practice` trigger for every ship and scout before planning or editing; the skill owns the proportional procedure so neither `AGENTS.md` nor task instructions restate it.
 
 Every ship brief must retain the worktree-isolation assertion and stop if launched in the primary checkout.
 If a ship task touches firstmate's shared tracked material, explicitly require `firstmate-coding-guidelines` before editing.

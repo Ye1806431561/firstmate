@@ -354,6 +354,7 @@ IFS= read -r -d '' TASK_SECTION <<'EOF' || true
 {FIRSTMATE_SPEC}
 EOF
 TASK_SECTION=${TASK_SECTION%$'\n'}
+ENGINEERING_SECTION=$(fm_engineering_practice_block "$FM_ROOT") || exit 1
 
 if [ "$KIND" = scout ]; then
 if "$SCRIPT_DIR/fm-bootstrap.sh" lavish-compatible >/dev/null 2>&1; then
@@ -365,6 +366,8 @@ cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
 
 $TASK_SECTION
+
+$ENGINEERING_SECTION
 
 $HERDR_SECTION
 
@@ -451,6 +454,8 @@ cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
 
 $TASK_SECTION
+
+$ENGINEERING_SECTION
 
 $HERDR_SECTION
 

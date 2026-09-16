@@ -354,6 +354,12 @@ STUB
       "$mode: promoted worker did not receive the Captain's intent subsection"
     assert_grep "## Firstmate spec" "$payload" \
       "$mode: promoted worker did not receive the Firstmate spec subsection"
+    assert_grep '# Engineering practice' "$payload" \
+      "$mode: promoted worker did not receive the task-scoped engineering pointer"
+    assert_grep "Before planning or editing, read and follow \`$ROOT/.agents/skills/engineering-practice/SKILL.md\`." "$payload" \
+      "$mode: promoted worker did not reload the engineering skill for ship work"
+    [ "$(grep -c '^# Engineering practice$' "$payload")" -eq 1 ] \
+      || fail "$mode: promoted instructions rendered more than one engineering-practice section"
 
     # Compare the public outputs of both real generation paths. The promoted
     # payload ends at its Definition of done, as does an ordinary generated
