@@ -1,0 +1,42 @@
+=== dirty working tree ===
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher process holds this home lock (last beat: 0s ago).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+firstmate: updated 2130b8e..2b284fe
+no watches registered
+secondmate sm1: skipped: dirty working tree
+reread-firstmate: no
+restart-secondmates: none
+nudge-secondmates: none
+local_patch=local-uncommitted-patch
+private_data=private-data-preserved
+=== unique divergence ===
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher process holds this home lock (last beat: 0s ago).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+firstmate: updated a87226c..18caac9
+no watches registered
+secondmate sm1: skipped: diverged from origin/main; reconciliation required (record: /Users/pingu/.no-mistakes/evidence/01M2YKAD45YSS67DE45ST8FR72/update-fixtures/divergence/home/state/.secondmate-update-reconcile/sm1.pending)
+reread-firstmate: no
+restart-secondmates: none
+nudge-secondmates: none
+original_head=1793a7ca326046534857a0bb534cf1edb8e90738
+after_head=1793a7ca326046534857a0bb534cf1edb8e90738
+head_preserved=yes
+local_patch=unique-local-patch
+private_data=private-data-preserved
+recovery_record=/Users/pingu/.no-mistakes/evidence/01M2YKAD45YSS67DE45ST8FR72/update-fixtures/divergence/home/state/.secondmate-update-reconcile/sm1.pending
+schema=fm-secondmate-update-reconcile.v1
+id=sm1
+status=diverged
+local_commit=1793a7ca326046534857a0bb534cf1edb8e90738
+target_commit=18caac937840f6b06ad5f528d6b785e2f21e80af
+target=origin/main
