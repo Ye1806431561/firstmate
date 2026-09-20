@@ -600,14 +600,17 @@ const pi = {
 async function fire(event, payload, ctx) {
   const eventCtx = ctx;
   if (eventCtx?.sessionManager) activeMainSession = eventCtx.sessionManager;
-  for (const handler of piHandlers.get(event) ?? []) await handler(payload, eventCtx);
+  let result;
+  for (const handler of piHandlers.get(event) ?? []) result = await handler(payload, eventCtx);
+  return result;
 }
-function makeOffer(message, projects = [approvedProject], heartbeat = false, eligible = projects.length > 0 || heartbeat) {
+function makeOffer(message, projects = [approvedProject], heartbeat = false, eligible = projects.length > 0 || heartbeat, awayOnly = false) {
   const offer = {
     message,
     projects,
     heartbeat,
     eligible,
+    awayOnly,
     accepted: false,
     settlement: Promise.resolve(),
     accept(settlement = Promise.resolve()) {
@@ -1587,17 +1590,19 @@ if (dispatch("check: unresolved fleet event", []).accepted) {
   throw new Error("branch accepted an unscoped, non-heartbeat fleet wake");
 }
 
-// Away mode still owns supervision regardless of default-on eligibility.
+// The legacy away daemon flag means nothing on Pi, where the daemon is never
+// launched: the branch keeps accepting (docs/pi-supervision-branch.md
+// "Postures"; the away-posture record itself is covered by
+// test_away_record_parks_main_and_presents_after_archive).
 writeFileSync(`${home}/state/.afk`, "");
-if (dispatch("signal: while afk").accepted) throw new Error("branch accepted a wake during away mode");
+if (!dispatch("signal: legacy flag present").accepted) throw new Error("branch declined a wake over the legacy daemon flag");
 rmSync(`${home}/state/.afk`);
-if (!dispatch("signal: gates cleared").accepted) throw new Error("branch refused a wake with gates cleared");
 await settle(() => (globalThis.__fmPrompts ?? []).length === 3, "branch wake prompts");
 process.exit(0);
 EOF
   status=$?
   out=$(cat "$TMP_ROOT/node-output")
-  expect_code 0 "$status" "default-on eligibility, heartbeat routing, and afk gating must bind: $out"
+  expect_code 0 "$status" "default-on eligibility, heartbeat routing, and legacy-flag indifference must bind: $out"
 
   PLUGIN="$repo/.pi/extensions/fm-branch-supervision.ts" FM_HOME="$TMP_ROOT/gating-home-2" FM_ROOT_OVERRIDE="$broken" \
     DRIVER_PRELUDE="$DRIVER_PRELUDE" node --input-type=module > "$TMP_ROOT/node-output" 2>&1 <<'EOF'
@@ -1625,7 +1630,344 @@ EOF
   status=$?
   out=$(cat "$TMP_ROOT/node-output")
   expect_code 0 "$status" "broken-branch settlement must return delivery ownership to the watcher: $out"
-  pass "branch default-on eligibility (task-scoped, heartbeat, afk) binds and a broken branch rejects to watcher fallback"
+  pass "branch default-on eligibility (task-scoped, heartbeat, legacy flag ignored) binds and a broken branch rejects to watcher fallback"
+}
+
+# The away posture on the branch side (docs/pi-supervision-branch.md
+# "Postures"): with the record present the wake carries the POSTURE: AWAY tail
+# ending in the record's read-back verbatim while the branch session and its
+# prefix are untouched; check and heartbeat rows are claimed and lift task
+# scoping; a captain outcome persists its visible entry but opens NO processing
+# turn on the parked main, at report time, at every run boundary, and at
+# session start; a request already pending when the record appears is
+# cancelled rather than re-presented; and the first run boundary after the
+# record is archived presents the accumulated rows with a fresh triggered
+# budget. Every record read goes through the real bin/fm-afk-contract.sh.
+test_away_record_parks_main_and_presents_after_archive() {
+  local repo home out status
+  repo="$TMP_ROOT/away-root"
+  home="$TMP_ROOT/away-home"
+  mkdir -p "$home/state" "$home/config"
+  install_pi_branch_extension_fixture "$repo"
+  PLUGIN="$repo/.pi/extensions/fm-branch-supervision.ts" FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
+    DRIVER_PRELUDE="$DRIVER_PRELUDE" node --input-type=module > "$TMP_ROOT/node-output" 2>&1 <<'EOF'
+const prelude = process.env.DRIVER_PRELUDE;
+await eval(`(async () => { ${prelude}; globalThis.__t = { fire, dispatch, settle, sentToMain, mainEntries, outcomeScript, defaultSessionCtx, home, realRoot, bus, approvedProject }; })()`);
+const { fire, dispatch, settle, sentToMain, mainEntries, outcomeScript, defaultSessionCtx, home, realRoot, bus, approvedProject } = globalThis.__t;
+import { spawnSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
+
+const contract = (args) => {
+  const result = spawnSync("bash", [`${realRoot}/bin/fm-afk-contract.sh`, ...args], {
+    encoding: "utf8",
+    env: { ...process.env, FM_HOME: home, FM_STATE_OVERRIDE: `${home}/state` },
+  });
+  if (result.status !== 0) throw new Error(`fm-afk-contract.sh ${args.join(" ")} failed: ${result.stderr}`);
+  return (result.stdout || "").trim();
+};
+const requests = () => sentToMain.filter((sent) => sent.message.customType === "fm-branch-process");
+const unprocessedSeqs = () => outcomeScript(["unprocessed"]).split("\n").filter(Boolean).map((line) => JSON.parse(line).seq);
+const runOf = async (fn) => { await fire("agent_start", {}); await fn?.(); await fire("agent_end", {}); await fire("agent_settled", {}); };
+
+await fire("session_start", {}, defaultSessionCtx);
+
+// 1. Attended: no tail, and the branch session is built from the generator.
+let finishPrompt;
+globalThis.__fmOnBranchPrompt = () => new Promise((resolve) => { finishPrompt = resolve; });
+const attendedOffer = dispatch("signal: attended wake");
+if (!attendedOffer.accepted) throw new Error("the attended wake was refused");
+await settle(() => (globalThis.__fmPrompts ?? []).length === 1, "attended branch prompt");
+const session = globalThis.__fmSessions[0];
+const report = session.options.customTools.find((tool) => tool.name === "fm_branch_report");
+if (globalThis.__fmPrompts[0].includes("POSTURE: AWAY")) throw new Error("an attended wake carried the away tail");
+// The prefix is the generator's output handed to the branch's resource
+// loader; the per-wake tail must never appear there.
+const systemPrompt = (globalThis.__fmLoaders ?? []).at(-1)?.options?.systemPrompt;
+if (typeof systemPrompt !== "string" || !systemPrompt.startsWith("You are the SUPERVISION BRANCH")) {
+  throw new Error("the branch session was not built from the byte-stable generator");
+}
+if (systemPrompt.includes("POSTURE: AWAY.")) throw new Error("the per-wake tail leaked into the prefix");
+if (!systemPrompt.includes("# Postures") || !systemPrompt.includes("# Ask-user authority policy")) {
+  throw new Error("the prefix lost its fixed Postures section or the ask-user-authority policy");
+}
+await report.execute("r1", { task: "branch-driver", verdict: "routine", summary: "worker healthy" }, undefined, undefined, {});
+finishPrompt();
+await attendedOffer.settlement;
+globalThis.__fmOnBranchPrompt = undefined;
+
+// 2. A captain outcome reported while main is already streaming queues a
+// followUp that joins this run. The record appearing before that follow-up
+// is consumed must strip the typed processing message at the context
+// boundary for followUp, nextTurn, and a dedicated processing turn.
+await fire("agent_start", {}, defaultSessionCtx);
+const first = await report.execute("c1", { task: "task-d", verdict: "captain", summary: "PR https://example.com/pr/1 is ready for review" }, undefined, undefined, {});
+if (first.isError) throw new Error(`attended captain report failed: ${JSON.stringify(first)}`);
+const seq1 = JSON.parse(outcomeScript(["list", "--recent", "1"])).seq;
+if (requests().length !== 1) throw new Error(`the attended captain outcome opened ${requests().length} requests, not 1`);
+const pending = requests()[0];
+if (pending.message.customType !== "fm-branch-process") {
+  throw new Error(`the first queued request was not a processing delivery: ${JSON.stringify(pending.message)}`);
+}
+if (pending.options.triggerTurn !== true || pending.options.deliverAs !== "followUp") {
+  throw new Error(`the first queued request was not a streaming followUp: ${JSON.stringify(pending.options)}`);
+}
+if (!pending.message.content.includes(`[seq ${seq1}]`)) {
+  throw new Error(`the first queued request lost seq ${seq1}: ${pending.message.content}`);
+}
+contract(["propose", "--grant", "task-d"]);
+contract(["confirm"]);
+const processingMsg = { role: "custom", customType: pending.message.customType, content: pending.message.content, display: false };
+let aborted = false;
+const abortCtx = { ...defaultSessionCtx, abort() { aborted = true; } };
+const streamingResult = await fire("context", {
+  messages: [
+    { role: "user", content: "captain still in this turn" },
+    { role: "assistant", content: [{ type: "toolCall", id: "t1" }] },
+    { role: "toolResult", toolCallId: "t1", content: "tool finished" },
+    processingMsg,
+  ],
+}, abortCtx);
+if (aborted) throw new Error("stripping processing aborted a captain-opened streaming turn after a tool call");
+if (streamingResult?.messages?.some((message) => message.customType === "fm-branch-process")) {
+  throw new Error(`streaming processing was not stripped: ${JSON.stringify(streamingResult)}`);
+}
+if (!streamingResult?.messages?.some((message) => message.role === "user")) {
+  throw new Error("streaming suppression dropped the captain turn");
+}
+aborted = false;
+const nextTurnResult = await fire("context", {
+  messages: [{ role: "user", content: "watcher: FAILED - repair the cycle" }, processingMsg],
+}, abortCtx);
+if (aborted) throw new Error("stripping a nextTurn processing message aborted the watcher-failure turn");
+if (nextTurnResult?.messages?.some((message) => message.customType === "fm-branch-process")) {
+  throw new Error(`nextTurn processing was not stripped: ${JSON.stringify(nextTurnResult)}`);
+}
+const history = [
+  { role: "user", content: "earlier captain request" },
+  { role: "assistant", content: "earlier firstmate reply" },
+];
+aborted = false;
+const openedByCaptain = await fire("context", {
+  messages: [...history, { role: "user", content: "current captain prompt" }, processingMsg],
+}, abortCtx);
+if (aborted) throw new Error("stripping processing aborted a captain-opened turn that had history");
+if (openedByCaptain?.messages?.some((message) => message.customType === "fm-branch-process")) {
+  throw new Error(`captain-opened processing was not stripped: ${JSON.stringify(openedByCaptain)}`);
+}
+aborted = false;
+await fire("before_agent_start", { prompt: "captain typed this now" }, abortCtx);
+const stolen = await fire("context", {
+  messages: [{ role: "user", content: "captain typed this now" }, processingMsg],
+}, abortCtx);
+if (aborted) throw new Error("a captain prompt that opened the run was aborted after a queued processing request joined it");
+if (stolen?.messages?.some((message) => message.customType === "fm-branch-process")) {
+  throw new Error(`joined processing was not stripped from the captain-opened run: ${JSON.stringify(stolen)}`);
+}
+await fire("agent_end", {});
+aborted = false;
+await fire("before_agent_start", { prompt: pending.message.content }, abortCtx);
+await fire("agent_start", {}, defaultSessionCtx);
+const openedByRequest = await fire("context", { messages: [...history, processingMsg] }, abortCtx);
+if (!aborted) throw new Error("a dedicated processing turn with history was not aborted under the record");
+if (openedByRequest?.messages?.some((message) => message.customType === "fm-branch-process")) {
+  throw new Error(`dedicated processing with history was not stripped: ${JSON.stringify(openedByRequest)}`);
+}
+await fire("agent_end", {});
+await fire("agent_settled", {});
+if (requests().length !== 1) throw new Error("a request pending when the record appeared was re-presented to the parked main");
+if (JSON.stringify(unprocessedSeqs()) !== JSON.stringify([seq1])) throw new Error(`the record moved the processed marker: ${unprocessedSeqs()}`);
+
+// 3. Under the record: the tail ends with the read-back verbatim, the branch
+// session is the same one (no rebuild, so the prefix is untouched), the
+// check and heartbeat rows are claimed, and a claimed check row lifts task
+// scoping so the branch may report fleet.
+writeFileSync(
+  `${home}/state/.wake-queue`,
+  "1\t1\tsignal\tbranch-driver.status\tsignal: away wake\n2\t2\tcheck\tmain-only\tcheck: task-d.check.sh: PR merged\n3\t3\theartbeat\theartbeat\theartbeat\n",
+);
+globalThis.__fmOnBranchPrompt = () => new Promise((resolve) => { finishPrompt = resolve; });
+const awayOffer = {
+  message: "signal: away wake",
+  projects: [approvedProject],
+  heartbeat: false,
+  eligible: true,
+  accepted: false,
+  settlement: Promise.resolve(),
+  accept(settlement = Promise.resolve()) {
+    awayOffer.accepted = true;
+    awayOffer.settlement = settlement;
+  },
+};
+bus.emit("fm-branch-supervision:dispatch", awayOffer);
+if (!awayOffer.accepted) throw new Error("the away wake was refused");
+await settle(() => (globalThis.__fmPrompts ?? []).length === 2, "away branch prompt");
+if (globalThis.__fmSessions.length !== 1) throw new Error("the away posture rebuilt the branch session");
+const awayPrompt = globalThis.__fmPrompts[1];
+const head = "FIRSTMATE SUPERVISION WAKE: signal: away wake\n\nHandle this per your operating procedure and finish with fm_branch_report.\n\nPOSTURE: AWAY. ";
+if (!awayPrompt.startsWith(head)) throw new Error(`the away wake lost its shape or its tail: ${awayPrompt}`);
+const readback = contract(["readback"]);
+if (!readback.includes("merge when green (task ids): task-d")) throw new Error(`the read-back lost the grant: ${readback}`);
+if (!awayPrompt.endsWith(`The record, verbatim:\n${readback}`)) throw new Error(`the tail does not end with the record's read-back verbatim: ${awayPrompt}`);
+const snapshot = readFileSync(`${home}/state/.branch-eligible-rows`, "utf8").trim().split("\n").join(",");
+if (snapshot !== "1,2,3") throw new Error(`the away wake claimed rows ${snapshot}, not every row`);
+const fleet = await report.execute("c2", { task: "fleet", verdict: "captain", summary: "merged task-d's PR under its grant" }, undefined, undefined, {});
+if (fleet.isError) throw new Error(`a fleet report under a claimed check row was refused: ${JSON.stringify(fleet)}`);
+finishPrompt();
+await awayOffer.settlement;
+globalThis.__fmOnBranchPrompt = undefined;
+const seq2 = JSON.parse(outcomeScript(["list", "--recent", "1"])).seq;
+
+// 4. No processing turn under the record: not at report time, not at a run
+// boundary, not at session start. The visible entry still persists.
+if (requests().length !== 1) throw new Error("a captain outcome under the record opened a processing turn on the parked main");
+if (!mainEntries.some((entry) => entry.customType === "fm-branch-visible-outcome" && entry.data.seq === seq2)) {
+  throw new Error("the captain row's visible entry was not persisted under the record");
+}
+if (JSON.stringify(unprocessedSeqs()) !== JSON.stringify([seq1, seq2])) throw new Error(`the rows did not accumulate unprocessed: ${unprocessedSeqs()}`);
+await runOf();
+if (requests().length !== 1) throw new Error("a run boundary under the record opened a processing turn");
+await fire("session_shutdown", {});
+await fire("session_start", {}, defaultSessionCtx);
+if (requests().length !== 1) throw new Error("session start under the record opened a processing turn");
+if (JSON.stringify(unprocessedSeqs()) !== JSON.stringify([seq1, seq2])) throw new Error("the record moved the processed marker across a session start");
+
+// 5. The return archives the record; the first run boundary presents the
+// accumulated set as one request with a fresh triggered budget.
+contract(["archive"]);
+await runOf();
+if (requests().length !== 2) throw new Error(`the run boundary after archive presented ${requests().length - 1} requests, not 1`);
+const presented = requests()[1];
+if (presented.options.triggerTurn !== true || presented.options.deliverAs !== "followUp") {
+  throw new Error(`the post-archive presentation did not open its own turn: ${JSON.stringify(presented.options)}`);
+}
+for (const needle of [`[seq ${seq1}] task-d:`, `[seq ${seq2}] fleet:`, `through=${seq2}`]) {
+  if (!presented.message.content.includes(needle)) throw new Error(`the post-archive request lost ${needle}: ${presented.message.content}`);
+}
+process.exit(0);
+EOF
+  status=$?
+  out=$(cat "$TMP_ROOT/node-output")
+  expect_code 0 "$status" "the away posture must park main and present after archive: $out"
+  pass "under the away-posture record the wake carries the verbatim read-back tail, claims every row, opens no processing turn, cancels a pending request, and presents the accumulated rows after archive"
+}
+
+test_away_only_wake_rejects_when_record_is_archived_before_drain() {
+  local repo home out status
+  repo="$TMP_ROOT/away-only-recheck-root"
+  home="$TMP_ROOT/away-only-recheck-home"
+  mkdir -p "$home/state" "$home/config"
+  install_pi_branch_extension_fixture "$repo"
+  PLUGIN="$repo/.pi/extensions/fm-branch-supervision.ts" FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
+    DRIVER_PRELUDE="$DRIVER_PRELUDE" node --input-type=module > "$TMP_ROOT/node-output" 2>&1 <<'EOF'
+const prelude = process.env.DRIVER_PRELUDE;
+await eval(`(async () => { ${prelude}; globalThis.__t = { fire, home, realRoot, bus, makeOffer, mainUserMessages, approvedProject }; })()`);
+const { fire, home, realRoot, bus, makeOffer, mainUserMessages, approvedProject } = globalThis.__t;
+import { spawnSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+
+const contract = (args) => {
+  const result = spawnSync("bash", [`${realRoot}/bin/fm-afk-contract.sh`, ...args], {
+    encoding: "utf8",
+    env: { ...process.env, FM_HOME: home, FM_STATE_OVERRIDE: `${home}/state` },
+  });
+  if (result.status !== 0) throw new Error(`fm-afk-contract.sh ${args.join(" ")} failed: ${result.stderr}`);
+  return (result.stdout || "").trim();
+};
+
+await fire("session_start", {});
+contract(["propose"]);
+contract(["confirm"]);
+writeFileSync(`${home}/state/.wake-queue`, "1\t1\tcheck\tmain-only\tcheck: task-d.check.sh: PR merged\n");
+contract(["archive"]);
+const offer = makeOffer("check: task-d.check.sh: PR merged", [], false, true, true);
+bus.emit("fm-branch-supervision:dispatch", offer);
+if (!offer.accepted) throw new Error("the away check-only wake was refused at accept");
+const failure = await offer.settlement.then(() => null, (error) => error);
+if (!(failure instanceof Error) || !failure.message.includes("no longer branch-eligible")) {
+  throw new Error(`an away-only wake archived before accept quiet-no-op'd: ${String(failure)}`);
+}
+if ((globalThis.__fmPrompts ?? []).length !== 0) {
+  throw new Error(`the archived away-only wake still prompted the branch: ${JSON.stringify(globalThis.__fmPrompts)}`);
+}
+if (mainUserMessages.length !== 0) {
+  throw new Error("the rejected settlement leaked a main user message from the branch");
+}
+
+contract(["propose"]);
+contract(["confirm"]);
+writeFileSync(`${home}/state/.wake-queue`, "1\t1\tsignal\tbranch-driver.status\tsignal: branch-driver.status\n");
+const taskLocal = makeOffer("signal: branch-driver.status", [approvedProject], false, true);
+bus.emit("fm-branch-supervision:dispatch", taskLocal);
+if (!taskLocal.accepted) throw new Error("the attended-eligible away wake was refused at accept");
+writeFileSync(`${home}/state/.wake-queue`, "");
+const quiet = await taskLocal.settlement.then(() => null, (error) => error);
+if (quiet instanceof Error) {
+  throw new Error(`an attended-eligible wake threw after it was drained: ${quiet.message}`);
+}
+if ((globalThis.__fmPrompts ?? []).length !== 0) {
+  throw new Error(`a drained task-local wake prompted the branch: ${JSON.stringify(globalThis.__fmPrompts)}`);
+}
+if (mainUserMessages.length !== 0) {
+  throw new Error("a drained task-local wake opened a redundant main turn");
+}
+process.exit(0);
+EOF
+  status=$?
+  out=$(cat "$TMP_ROOT/node-output")
+  expect_code 0 "$status" "an accepted away-only wake must reject after archive: $out"
+  pass "an accepted away-only wake rejects after archive, while a drained task-local wake stays a quiet no-op"
+}
+
+test_away_claimed_heartbeat_on_a_task_wake_lifts_task_scoping() {
+  local repo home out status
+  repo="$TMP_ROOT/away-heartbeat-scope-root"
+  home="$TMP_ROOT/away-heartbeat-scope-home"
+  mkdir -p "$home/state" "$home/config"
+  install_pi_branch_extension_fixture "$repo"
+  PLUGIN="$repo/.pi/extensions/fm-branch-supervision.ts" FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
+    DRIVER_PRELUDE="$DRIVER_PRELUDE" node --input-type=module > "$TMP_ROOT/node-output" 2>&1 <<'EOF'
+const prelude = process.env.DRIVER_PRELUDE;
+await eval(`(async () => { ${prelude}; globalThis.__t = { fire, settle, home, realRoot, bus, makeOffer, approvedProject, defaultSessionCtx }; })()`);
+const { fire, settle, home, realRoot, bus, makeOffer, approvedProject, defaultSessionCtx } = globalThis.__t;
+import { spawnSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
+
+const contract = (args) => {
+  const result = spawnSync("bash", [`${realRoot}/bin/fm-afk-contract.sh`, ...args], {
+    encoding: "utf8",
+    env: { ...process.env, FM_HOME: home, FM_STATE_OVERRIDE: `${home}/state` },
+  });
+  if (result.status !== 0) throw new Error(`fm-afk-contract.sh ${args.join(" ")} failed: ${result.stderr}`);
+  return (result.stdout || "").trim();
+};
+
+await fire("session_start", {}, defaultSessionCtx);
+contract(["propose"]);
+contract(["confirm"]);
+writeFileSync(
+  `${home}/state/.wake-queue`,
+  "1\t1\tsignal\tbranch-driver.status\tsignal: branch-driver.status\n2\t2\theartbeat\theartbeat\theartbeat\n",
+);
+let finishPrompt;
+globalThis.__fmOnBranchPrompt = () => new Promise((resolve) => { finishPrompt = resolve; });
+const offer = makeOffer("signal: branch-driver.status", [approvedProject], false, true);
+bus.emit("fm-branch-supervision:dispatch", offer);
+if (!offer.accepted) throw new Error("the mixed away wake was refused");
+await settle(() => (globalThis.__fmPrompts ?? []).length === 1, "mixed away branch prompt");
+const snapshot = readFileSync(`${home}/state/.branch-eligible-rows`, "utf8").trim().split("\n").join(",");
+if (snapshot !== "1,2") throw new Error(`the mixed away wake claimed rows ${snapshot}, not signal+heartbeat`);
+const session = globalThis.__fmSessions[0];
+const report = session.options.customTools.find((tool) => tool.name === "fm_branch_report");
+const fleet = await report.execute("fleet", { task: "fleet", verdict: "routine", summary: "fleet heartbeat under a task wake" }, undefined, undefined, {});
+if (fleet.isError) throw new Error(`a claimed heartbeat on a task wake still scoped the report: ${JSON.stringify(fleet)}`);
+finishPrompt();
+await offer.settlement;
+process.exit(0);
+EOF
+  status=$?
+  out=$(cat "$TMP_ROOT/node-output")
+  expect_code 0 "$status" "a claimed heartbeat on a non-heartbeat wake must lift task scoping: $out"
+  pass "a claimed heartbeat row on a non-heartbeat away wake lifts task scoping for the fleet report"
 }
 
 test_branch_predrain_recheck_keeps_a_heartbeat_a_co_present_check_arrives_under() {
@@ -3804,12 +4146,17 @@ test_branch_dispatch_classifies_main_only_rows_and_writes_the_eligible_snapshot(
   local repo home out status
   repo="$TMP_ROOT/dispatch-classify-root"
   home="$TMP_ROOT/dispatch-classify-home"
-  mkdir -p "$repo/.pi/extensions/lib" "$home/state" "$home/projects/approved"
+  mkdir -p "$repo/.pi/extensions/lib" "$home/state" "$home/data/scout-complete" "$home/projects/approved"
   cp "$ROOT/.pi/extensions/lib/fm-branch-dispatch.ts" "$repo/.pi/extensions/lib/fm-branch-dispatch.ts"
   cp "$ROOT/.pi/extensions/lib/fm-native-contract.ts" "$repo/.pi/extensions/lib/fm-native-contract.ts"
   cp "$ROOT/.pi/extensions/lib/fm-async-exec.ts" "$repo/.pi/extensions/lib/fm-async-exec.ts"
   cp "$ROOT/.pi/extensions/lib/fm-branch-model-picker.ts" "$repo/.pi/extensions/lib/fm-branch-model-picker.ts"
-  printf 'project=%s/projects/approved\nwindow=fm-window\n' "$home" > "$home/state/task-a.meta"
+  printf 'project=%s/projects/approved\nwindow=fm-window\nkind=ship\n' "$home" > "$home/state/task-a.meta"
+  printf 'project=%s/projects/approved\nwindow=fm-scout-complete\nkind=scout\n' "$home" > "$home/state/scout-complete.meta"
+  printf 'done: full report ready\n' > "$home/state/scout-complete.status"
+  printf '# Complete scout report\n' > "$home/data/scout-complete/report.md"
+  printf 'project=%s/projects/approved\nwindow=fm-scout-working\nkind=scout\n' "$home" > "$home/state/scout-working.meta"
+  printf 'working: audit still running\n' > "$home/state/scout-working.status"
   LIB="$repo/.pi/extensions/lib/fm-branch-dispatch.ts" FM_HOME="$home" GRANT="$ROOT/bin/fm-wake-grant.sh" \
     node --input-type=module > "$TMP_ROOT/node-output" 2>&1 <<'EOF'
 import { pathToFileURL } from "node:url";
@@ -3847,9 +4194,98 @@ for (const row of mainOnlyRows) {
   if (scope.corrupted) throw new Error(`an ordinary main-only row must not read as corrupted: ${row}`);
 }
 
+// A completed scout with a full report and live metadata stays main-owned even
+// when no backlog file lists it. Both its immediate signal and later stale
+// alias keep the report, captain-call gate, and guarded cleanup in one main
+// lifecycle, while unrelated work and a heartbeat remain branch-ownable.
+if (fs.existsSync(`${process.env.FM_HOME}/data/backlog.md`)) {
+  throw new Error("scout routing fixture unexpectedly has a backlog list");
+}
+writeFileSync(
+  `${state}/.wake-queue`,
+  [
+    "1\t1\tsignal\tscout-complete.status\tsignal: scout-complete.status",
+    "1\t2\tsignal\ttask-a.status\tsignal: routine follow-up",
+  ].join("\n"),
+);
+const scoutSignalMixed = scopeForUnreadWake(state, false);
+if (!scoutSignalMixed.eligible || scoutSignalMixed.eligibleSeqs.join(",") !== "2" || scoutSignalMixed.corrupted) {
+  throw new Error(`a completed scout signal changed unrelated branch eligibility: ${JSON.stringify(scoutSignalMixed)}`);
+}
+if (scoutSignalMixed.mainOwnedKeys.join(",") !== "scout-complete.status") {
+  throw new Error(`a completed scout signal was not independently main-owned: ${JSON.stringify(scoutSignalMixed)}`);
+}
+
+// Match the shared latest-event semantics rather than reading the physical tail:
+// explanatory prose cannot hide a complete done event, a later real event can,
+// and an unterminated done event is withheld until its newline arrives.
+writeFileSync(`${state}/scout-complete.status`, "done: full report ready\nReport remains available without another status event");
+writeFileSync(`${state}/.wake-queue`, "1\t1\tsignal\tscout-complete.status\tsignal: trailing prose");
+const scoutTrailingProse = scopeForUnreadWake(state, false);
+if (scoutTrailingProse.eligible || scoutTrailingProse.mainOwnedKeys.join(",") !== "scout-complete.status") {
+  throw new Error(`trailing prose hid a completed scout event: ${JSON.stringify(scoutTrailingProse)}`);
+}
+writeFileSync(`${state}/scout-complete.status`, "done: append still in progress");
+const scoutIncompleteDone = scopeForUnreadWake(state, false);
+if (!scoutIncompleteDone.eligible || scoutIncompleteDone.mainOwnedKeys.length !== 0) {
+  throw new Error(`an incomplete done event was treated as durable: ${JSON.stringify(scoutIncompleteDone)}`);
+}
+writeFileSync(`${state}/scout-complete.status`, "done: first report\nworking: report reopened\n");
+const scoutReopened = scopeForUnreadWake(state, false);
+if (!scoutReopened.eligible || scoutReopened.mainOwnedKeys.length !== 0) {
+  throw new Error(`a later working event did not supersede done: ${JSON.stringify(scoutReopened)}`);
+}
+writeFileSync(`${state}/scout-complete.status`, "done: full report ready\n");
+const scoutAway = scopeForUnreadWake(state, false, true);
+if (!scoutAway.eligible || scoutAway.eligibleSeqs.join(",") !== "1" ||
+  scoutAway.mainOwnedKeys.join(",") !== "scout-complete.status") {
+  throw new Error(`the away posture did not take a completed scout row: ${JSON.stringify(scoutAway)}`);
+}
+writeFileSync(
+  `${state}/.wake-queue`,
+  [
+    "1\t1\tstale\tfm-scout-complete\tstale: fm-scout-complete",
+    "1\t2\tsignal\ttask-a.status\tsignal: routine follow-up",
+  ].join("\n"),
+);
+const scoutStaleMixed = scopeForUnreadWake(state, false);
+if (!scoutStaleMixed.eligible || scoutStaleMixed.eligibleSeqs.join(",") !== "2" ||
+  scoutStaleMixed.mainOwnedKeys.join(",") !== "fm-scout-complete") {
+  throw new Error(`a completed scout stale alias was not independently main-owned: ${JSON.stringify(scoutStaleMixed)}`);
+}
+if (scoutStaleMixed.taskByWakeKey["fm-scout-complete"] !== "scout-complete") {
+  throw new Error(`a completed scout stale alias lost task identity: ${JSON.stringify(scoutStaleMixed)}`);
+}
+writeFileSync(
+  `${state}/.wake-queue`,
+  [
+    "1\t1\theartbeat\theartbeat\theartbeat",
+    "1\t2\tsignal\tscout-complete.status\tsignal: scout-complete.status",
+    "1\t3\tsignal\ttask-a.status\tsignal: routine follow-up",
+  ].join("\n"),
+);
+const scoutHeartbeatMixed = scopeForUnreadWake(state, true);
+if (!scoutHeartbeatMixed.eligible || scoutHeartbeatMixed.eligibleSeqs.join(",") !== "1,3" ||
+  scoutHeartbeatMixed.mainOwnedKeys.join(",") !== "scout-complete.status") {
+  throw new Error(`a main-owned scout vetoed or rode the heartbeat: ${JSON.stringify(scoutHeartbeatMixed)}`);
+}
+
+writeFileSync(
+  `${state}/.wake-queue`,
+  [
+    "1\t1\tsignal\tscout-working.status\tsignal: scout-working.status",
+    "1\t2\tstale\tfm-scout-working\tstale: fm-scout-working",
+  ].join("\n"),
+);
+const workingScout = scopeForUnreadWake(state, false);
+if (!workingScout.eligible || workingScout.eligibleSeqs.join(",") !== "1,2" ||
+  workingScout.eligibleTasks.join(",") !== "scout-working" || workingScout.mainOwnedKeys.length !== 0) {
+  throw new Error(`an active scout was not branch-ownable: ${JSON.stringify(workingScout)}`);
+}
+
 // A needs-decision signal row is a main-only class too, marked by payload
 // rather than kind (docs/pi-supervision-branch.md "Autonomy"): it is excluded
-// from eligibleSeqs and named in needsDecisionKeys. A later stale row under the
+// from eligibleSeqs and named in mainOwnedKeys. A later stale row under the
 // task's window alias remains individually claimable, while task-identity
 // precedence keeps its complete wake on main until the decision row is read.
 writeFileSync(
@@ -3866,8 +4302,8 @@ if (!needsDecisionMixed.eligible) {
 if (needsDecisionMixed.eligibleSeqs.join(",") !== "2") {
   throw new Error(`a needs-decision row must be excluded from eligibleSeqs: ${JSON.stringify(needsDecisionMixed)}`);
 }
-if (needsDecisionMixed.needsDecisionKeys.join(",") !== "task-a.status") {
-  throw new Error(`needsDecisionKeys must name the excluded row: ${JSON.stringify(needsDecisionMixed)}`);
+if (needsDecisionMixed.mainOwnedKeys.join(",") !== "task-a.status") {
+  throw new Error(`the main-owned index must name the excluded decision row: ${JSON.stringify(needsDecisionMixed)}`);
 }
 if (needsDecisionMixed.taskByWakeKey["task-a.status"] !== "task-a" ||
   needsDecisionMixed.taskByWakeKey["fm-window"] !== "task-a") {
@@ -3899,7 +4335,7 @@ const captainHeldMixed = scopeForUnreadWake(state, false);
 if (!captainHeldMixed.eligible || captainHeldMixed.eligibleSeqs.join(",") !== "2") {
   throw new Error(`a captain-held stale row was offered to the branch: ${JSON.stringify(captainHeldMixed)}`);
 }
-if (captainHeldMixed.needsDecisionKeys.join(",") !== "fm-window") {
+if (captainHeldMixed.mainOwnedKeys.join(",") !== "fm-window") {
   throw new Error(`the captain-held stale key was not marked main-owned: ${JSON.stringify(captainHeldMixed)}`);
 }
 
@@ -3919,17 +4355,17 @@ if (countedStatusReads !== 1) {
   throw new Error(`one status was read ${countedStatusReads} times for repeated stale rows`);
 }
 if (!repeatedCaptainHeld.eligible || repeatedCaptainHeld.eligibleSeqs.join(",") !== "3" ||
-  repeatedCaptainHeld.needsDecisionKeys.join(",") !== "fm-window,fm-window") {
+  repeatedCaptainHeld.mainOwnedKeys.join(",") !== "fm-window,fm-window") {
   throw new Error(`repeated stale reminders changed classification: ${JSON.stringify(repeatedCaptainHeld)}`);
 }
 const repeatedCaptainHeldNextScan = scopeForUnreadWake(state, false);
-if (countedStatusReads !== 1 || repeatedCaptainHeldNextScan.needsDecisionKeys.join(",") !== "fm-window,fm-window") {
+if (countedStatusReads !== 1 || repeatedCaptainHeldNextScan.mainOwnedKeys.join(",") !== "fm-window,fm-window") {
   throw new Error(`an unchanged status was not reused across scans: reads=${countedStatusReads} scope=${JSON.stringify(repeatedCaptainHeldNextScan)}`);
 }
 writeFileSync(`${state}/task-a.status`, "captain-held [key=route]: awaiting the captain\nworking: resumed after answer\n");
 const changedCaptainHeld = scopeForUnreadWake(state, false);
 if (countedStatusReads !== 2 || changedCaptainHeld.eligibleSeqs.join(",") !== "1,2,3" ||
-  changedCaptainHeld.needsDecisionKeys.length !== 0) {
+  changedCaptainHeld.mainOwnedKeys.length !== 0) {
   throw new Error(`a changed status did not invalidate its cached decision: reads=${countedStatusReads} scope=${JSON.stringify(changedCaptainHeld)}`);
 }
 countedStatusPath = "";
@@ -3951,7 +4387,7 @@ const openDecisionMixed = scopeForUnreadWake(state, false);
 if (!openDecisionMixed.eligible || openDecisionMixed.eligibleSeqs.join(",") !== "2") {
   throw new Error(`an open-decision stale row was offered to the branch: ${JSON.stringify(openDecisionMixed)}`);
 }
-if (openDecisionMixed.needsDecisionKeys.join(",") !== "fm-window") {
+if (openDecisionMixed.mainOwnedKeys.join(",") !== "fm-window") {
   throw new Error(`the open-decision stale key was not marked main-owned: ${JSON.stringify(openDecisionMixed)}`);
 }
 
@@ -3962,7 +4398,7 @@ writeFileSync(
 );
 const customResolved = scopeForUnreadWake(state, false);
 if (!customResolved.eligible || customResolved.eligibleSeqs.slice().sort().join(",") !== "1,2" ||
-  customResolved.needsDecisionKeys.length !== 0) {
+  customResolved.mainOwnedKeys.length !== 0) {
   throw new Error(`a custom resolution verb left the stale decision open: ${JSON.stringify(customResolved)}`);
 }
 
@@ -3970,7 +4406,7 @@ process.env.FM_CLASSIFY_CAPTAIN_HELD_VERB = "awaiting-captain";
 writeFileSync(`${state}/task-a.status`, "awaiting-captain [key=cleanup]: awaiting the captain\n");
 const customHeld = scopeForUnreadWake(state, false);
 if (!customHeld.eligible || customHeld.eligibleSeqs.join(",") !== "2" ||
-  customHeld.needsDecisionKeys.join(",") !== "fm-window") {
+  customHeld.mainOwnedKeys.join(",") !== "fm-window") {
   throw new Error(`a custom captain-held verb was offered to the branch: ${JSON.stringify(customHeld)}`);
 }
 delete process.env.FM_CLASSIFY_RESOLVE_VERB;
@@ -3983,7 +4419,7 @@ writeFileSync(
 );
 const customReservedPrefixes = scopeForUnreadWake(state, false);
 if (!customReservedPrefixes.eligible || customReservedPrefixes.eligibleSeqs.join(",") !== "2" ||
-  customReservedPrefixes.needsDecisionKeys.join(",") !== "fm-window") {
+  customReservedPrefixes.mainOwnedKeys.join(",") !== "fm-window") {
   throw new Error(`configured reserved prefixes lost an open stale decision: ${JSON.stringify(customReservedPrefixes)}`);
 }
 delete process.env.FM_CLASSIFY_RESERVED_KEY_PREFIXES;
@@ -3992,7 +4428,7 @@ writeFileSync(`${state}/symlink-target.status`, "needs-decision: external choice
 unlinkSync(`${state}/task-a.status`);
 symlinkSync(`${state}/symlink-target.status`, `${state}/task-a.status`);
 const symlinkedStatus = scopeForUnreadWake(state, false);
-if (!symlinkedStatus.corrupted || symlinkedStatus.eligible || symlinkedStatus.needsDecisionKeys.length !== 0) {
+if (!symlinkedStatus.corrupted || symlinkedStatus.eligible || symlinkedStatus.mainOwnedKeys.length !== 0) {
   throw new Error(`a symlinked status file influenced stale routing: ${JSON.stringify(symlinkedStatus)}`);
 }
 unlinkSync(`${state}/task-a.status`);
@@ -4110,7 +4546,7 @@ EOF
   status=$?
   out=$(cat "$TMP_ROOT/node-output")
   expect_code 0 "$status" "main-only classification and eligible-row snapshot contract must hold: $out"
-  pass "scopeForUnreadWake excludes every main-only class without vetoing eligible task-local rows, and writes the eligible snapshot"
+  pass "scopeForUnreadWake keeps decisions and scout lifecycles main-owned without vetoing eligible task-local rows, and writes the eligible snapshot"
 }
 
 # The model picker's bounded scrolling and its search ranking are Pi's own
@@ -4936,6 +5372,9 @@ test_captain_outcome_processing_turn_is_sequence_keyed_and_re_presented
 test_branch_dispatch_classifies_main_only_rows_and_writes_the_eligible_snapshot
 test_branch_cache_key_is_per_home_stable
 test_branch_default_on_heartbeat_afk_and_fallback
+test_away_record_parks_main_and_presents_after_archive
+test_away_only_wake_rejects_when_record_is_archived_before_drain
+test_away_claimed_heartbeat_on_a_task_wake_lifts_task_scoping
 test_branch_predrain_recheck_keeps_a_heartbeat_a_co_present_check_arrives_under
 test_branch_report_refuses_a_task_the_wake_did_not_name
 test_branch_predrain_recheck_excludes_new_main_owned_row_without_deferring_eligible_work

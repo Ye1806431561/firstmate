@@ -431,7 +431,8 @@ test_pi_branch_offer_owns_actionable_wake() {
   home="$TMP_ROOT/pi-branch-offer-home"
   log="$TMP_ROOT/pi-branch-offer.log"
   stop="$TMP_ROOT/pi-branch-offer.stop"
-  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  mkdir -p "$repo/bin" "$home/state" "$home/config" "$home/data/scout-complete"
+  printf '# Complete scout report\n' > "$home/data/scout-complete/report.md"
   install_pi_watch_extension_fixture "$repo"
   plugin="$repo/.pi/extensions/fm-primary-pi-watch.ts"
   cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
@@ -444,7 +445,7 @@ printf 'arm=%s\n' "$$" >> "${FM_ARM_LOG:?}"
 count=$(grep -c '^arm=' "$FM_ARM_LOG")
 if [ "$count" -eq 1 ]; then
   printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
-  printf 'signal: branch-offer synthetic wake\n'
+  printf '%s\n' "${FM_TEST_REASON:-signal: branch-offer synthetic wake}"
   exit 0
 fi
 printf 'watcher: started pid=%s (beacon fresh) recovery-generation=fixture-generation\n' "$$"
@@ -453,15 +454,17 @@ while [ ! -e "$FM_STOP_FILE" ]; do sleep 0.02; done
 SH
   chmod +x "$repo/bin/fm-watch-arm.sh"
   out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_ARM_LOG="$log" FM_STOP_FILE="$stop" node --input-type=module 2>&1 <<'EOF'
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 // Two independent runs against the SAME dispatcher build: with an accepting
 // branch listener the wake must be owned by the branch (no main follow-up);
 // with a bus but no acceptor the dispatcher must fall back to main. The
 // divergence between the two runs is asserted, so the case cannot go vacuous.
-async function runScenario(withAcceptor) {
+async function runScenario(withAcceptor, reason, queue) {
   writeFileSync(process.env.FM_ARM_LOG, "");
+  writeFileSync(`${process.env.FM_HOME}/state/.wake-queue`, queue);
+  process.env.FM_TEST_REASON = reason;
   const offers = [];
   let mainPrompt = "";
   let tool = null;
@@ -477,8 +480,8 @@ async function runScenario(withAcceptor) {
   };
   if (withAcceptor) {
     bus.on("fm-branch-supervision:dispatch", (offer) => {
-      offers.push({ message: offer.message, projects: offer.projects });
-      offer.accept();
+      offers.push({ message: offer.message, projects: offer.projects, eligible: offer.eligible });
+      if (offer.eligible) offer.accept();
     });
   }
   const pi = {
@@ -492,11 +495,12 @@ async function runScenario(withAcceptor) {
       mainPrompt = message;
     },
   };
-  const mod = await import(`${pathToFileURL(process.env.PLUGIN).href}?scenario=${withAcceptor}`);
+  const scenario = encodeURIComponent(`${withAcceptor}-${reason}`);
+  const mod = await import(`${pathToFileURL(process.env.PLUGIN).href}?scenario=${scenario}`);
   mod.default(pi);
   await tool.execute("tool-call-branch-offer", {}, undefined, undefined, {});
   for (let i = 0; i < 250; i += 1) {
-    const settled = withAcceptor ? offers.length > 0 : mainPrompt !== "";
+    const settled = offers.some((offer) => offer.eligible) || mainPrompt !== "";
     if (settled) break;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
@@ -504,11 +508,15 @@ async function runScenario(withAcceptor) {
   return { offers, mainPrompt, rows };
 }
 
-writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
-writeFileSync(`${process.env.FM_HOME}/state/branch-offer.meta`, "project=/projects/approved\nwindow=fm-branch-offer\n");
-writeFileSync(`${process.env.FM_HOME}/state/.wake-queue`, "1\t1\tsignal\tbranch-offer.status\tsignal: branch-offer synthetic wake\n");
-const accepted = await runScenario(true);
-if (accepted.offers.length !== 1) throw new Error(`expected one branch offer, got ${accepted.offers.length}`);
+const state = `${process.env.FM_HOME}/state`;
+writeFileSync(`${state}/.lock`, `${process.pid}\n`);
+writeFileSync(`${state}/branch-offer.meta`, "project=/projects/approved\nwindow=fm-branch-offer\nkind=ship\n");
+const routineReason = "signal: branch-offer synthetic wake";
+const routineQueue = "1\t1\tsignal\tbranch-offer.status\tsignal: branch-offer synthetic wake\n";
+const accepted = await runScenario(true, routineReason, routineQueue);
+if (accepted.offers.length !== 1 || accepted.offers[0].eligible !== true) {
+  throw new Error(`expected one eligible branch offer, got ${JSON.stringify(accepted.offers)}`);
+}
 if (!accepted.offers[0].message.includes("signal: branch-offer synthetic wake")) {
   throw new Error(`offer missed the wake reason: ${accepted.offers[0].message}`);
 }
@@ -519,13 +527,43 @@ if (accepted.mainPrompt !== "") throw new Error(`accepted offer still reached ma
 if (!accepted.rows.some((row) => row.startsWith("confirmed generation=fixture-generation"))) {
   throw new Error(`handling delivery was not confirmed before the branch handoff: ${accepted.rows.join(" | ")}`);
 }
-const declined = await runScenario(false);
+const declined = await runScenario(false, routineReason, routineQueue);
 if (declined.offers.length !== 0) throw new Error("no-acceptor scenario recorded an offer");
 if (!declined.mainPrompt.includes("FIRSTMATE WATCHER WAKE")) {
   throw new Error(`unaccepted offer did not fall back to main: ${declined.mainPrompt}`);
 }
 if (!declined.mainPrompt.includes("signal: branch-offer synthetic wake")) {
   throw new Error(`fallback wake lost the reason line: ${declined.mainPrompt}`);
+}
+
+// Reproduce the missed-cleanup shape: a complete scout report and live task
+// metadata exist, but no backlog row does. Even with an accepting branch, the
+// terminal scout signal must reach main so reporting, the captain-call gate,
+// and guarded cleanup cannot split across actors.
+writeFileSync(`${state}/scout-complete.meta`, "project=/projects/approved\nwindow=fm-scout-complete\nkind=scout\n");
+writeFileSync(`${state}/scout-complete.status`, "done: full report ready\n");
+const scoutReason = "signal: scout-complete.status";
+const scoutQueue = "1\t1\tsignal\tscout-complete.status\tsignal: scout-complete.status\n";
+const scout = await runScenario(true, scoutReason, scoutQueue);
+if (scout.offers.length !== 1 || scout.offers[0].eligible !== false) {
+  throw new Error(`a completed scout was offered to the branch: ${JSON.stringify(scout.offers)}`);
+}
+if (!scout.mainPrompt.includes("FIRSTMATE WATCHER WAKE") || !scout.mainPrompt.includes(scoutReason)) {
+  throw new Error(`a completed scout did not reach main: ${scout.mainPrompt}`);
+}
+writeFileSync(`${state}/.afk-contract`, "schema=fm-afk-contract.v1\n");
+const awayScout = await runScenario(true, scoutReason, scoutQueue);
+if (awayScout.offers.length !== 1 || awayScout.offers[0].eligible !== true || awayScout.mainPrompt !== "") {
+  throw new Error(`the away posture did not route a completed scout to the branch: ${JSON.stringify(awayScout)}`);
+}
+rmSync(`${state}/.afk-contract`);
+writeFileSync(`${state}/scout-working.meta`, "project=/projects/approved\nwindow=fm-scout-working\nkind=scout\n");
+writeFileSync(`${state}/scout-working.status`, "working: audit still running\n");
+const workingReason = "signal: scout-working.status";
+const workingQueue = "1\t1\tsignal\tscout-working.status\tsignal: scout-working.status\n";
+const workingScout = await runScenario(true, workingReason, workingQueue);
+if (workingScout.offers.length !== 1 || workingScout.offers[0].eligible !== true || workingScout.mainPrompt !== "") {
+  throw new Error(`an active scout did not remain branch-ownable: ${JSON.stringify(workingScout)}`);
 }
 writeFileSync(process.env.FM_STOP_FILE, "stop\n");
 process.exit(0);
@@ -1326,6 +1364,182 @@ EOF
   expect_code 0 "$status" "watcher-failure repair must never be offered to the branch: $out"
   [ -z "$out" ] || fail "Pi watcher-failure test printed output: $out"
   pass "watcher-failure repair stays with main even with a live, accepting branch listener"
+}
+
+# Under the away-posture record the dispatcher offers every actionable row to
+# the branch - a check-kind trigger and a needs-decision signal included, the
+# two classes attended routing forces to main - while the two broken-queue
+# vetoes (an unresolvable task-local row, a structurally invalid row) and every
+# watcher-failure alarm still reach main exactly as attended
+# (docs/pi-supervision-branch.md "Postures").
+test_pi_away_record_collapses_eligibility_and_keeps_vetoes_on_main() {
+  local repo home plugin log stop out status label expect reason queue
+  repo="$TMP_ROOT/pi-away-root"
+  home="$TMP_ROOT/pi-away-home"
+  mkdir -p "$repo/bin" "$home/state" "$home/config" "$home/projects/approved"
+  install_pi_watch_extension_fixture "$repo"
+  plugin="$repo/.pi/extensions/fm-primary-pi-watch.ts"
+  printf 'project=%s/projects/approved\nwindow=fm-window\n' "$home" > "$home/state/task-a.meta"
+  FM_HOME="$home" "$ROOT/bin/fm-afk-contract.sh" propose >/dev/null || fail "away propose failed"
+  FM_HOME="$home" "$ROOT/bin/fm-afk-contract.sh" confirm >/dev/null || fail "away confirm failed"
+  [ -f "$home/state/.afk-contract" ] || fail "the away-posture record was not written"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = --handling-delivered ]; then exit 0; fi
+printf 'arm=%s\n' "$$" >> "${FM_ARM_LOG:?}"
+count=$(grep -c '^arm=' "$FM_ARM_LOG")
+if [ "$count" -eq 1 ]; then
+  printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
+  printf '%s\n' "${FM_TEST_REASON:?}"
+  exit 0
+fi
+printf 'watcher: started pid=%s (beacon fresh) recovery-generation=fixture-generation\n' "$$"
+trap 'exit 0' TERM INT
+while [ ! -e "$FM_STOP_FILE" ]; do sleep 0.02; done
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh"
+  while IFS='|' read -r label expect reason queue; do
+    [ -n "$label" ] || continue
+    log="$TMP_ROOT/pi-away-$label.log"
+    stop="$TMP_ROOT/pi-away-$label.stop"
+    out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_ARM_LOG="$log" FM_STOP_FILE="$stop" \
+      FM_TEST_REASON="$reason" FM_TEST_QUEUE="$queue" FM_TEST_EXPECT="$expect" node --input-type=module 2>&1 <<'EOF'
+import { writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const offers = [];
+let prompt = "";
+let tool = null;
+const handlers = new Map();
+const bus = {
+  on(channel, handler) {
+    handlers.set(channel, [...(handlers.get(channel) ?? []), handler]);
+    return () => {};
+  },
+  emit(channel, data) {
+    for (const handler of handlers.get(channel) ?? []) handler(data);
+  },
+};
+bus.on("fm-branch-supervision:dispatch", (offer) => {
+  offers.push({ message: offer.message, eligible: offer.eligible });
+  if (offer.eligible) offer.accept();
+});
+const pi = {
+  on() {},
+  events: bus,
+  registerCommand() {},
+  registerTool(candidate) {
+    if (candidate.name === "fm_watch_arm_pi") tool = candidate;
+  },
+  sendUserMessage: async (message) => {
+    prompt = message;
+  },
+};
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
+writeFileSync(
+  `${process.env.FM_HOME}/state/.wake-queue`,
+  process.env.FM_TEST_QUEUE.replace(/\\t/g, "\t").replace(/\\n/g, "\n"),
+);
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+mod.default(pi);
+await tool.execute("tool-call-away", {}, undefined, undefined, {});
+for (let i = 0; i < 250 && offers.length === 0 && !prompt; i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 10));
+}
+// Give a wrongly-routed main follow-up time to show up before asserting its absence.
+for (let i = 0; i < 25 && !prompt; i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 10));
+}
+if (process.env.FM_TEST_EXPECT === "branch") {
+  if (offers.length !== 1 || offers[0].eligible !== true) {
+    throw new Error(`under the away-posture record this wake was not offered to the branch: ${JSON.stringify(offers)}`);
+  }
+  if (prompt) throw new Error(`a branch-eligible wake still woke the parked main: ${prompt}`);
+} else {
+  if (offers.length !== 1 || offers[0].eligible !== false) {
+    throw new Error(`a broken-queue wake was offered to the branch under the record: ${JSON.stringify(offers)}`);
+  }
+  if (!prompt.includes(`FIRSTMATE WATCHER WAKE: ${process.env.FM_TEST_REASON}`)) {
+    throw new Error(`a wake the branch cannot take did not fall back to main: ${prompt}`);
+  }
+}
+writeFileSync(process.env.FM_STOP_FILE, "stop\n");
+process.exit(0);
+EOF
+    )
+    status=$?
+    expect_code 0 "$status" "away routing for the $label case must bind: $out"
+    [ -z "$out" ] || fail "Pi away routing test ($label) printed output: $out"
+  done <<'CASES'
+check-trigger|branch|check: task-a.check.sh: PR merged|1\t1\tsignal\ttask-a.status\tsignal: task-a.status\n2\t2\tcheck\tmain-only\tcheck: task-a.check.sh: PR merged\n
+check-only|branch|check: x-mention 1234567890|1\t1\tcheck\tmain-only\tcheck: x-mention 1234567890\n
+needs-decision|branch|signal: task-a.status|1\t1\tsignal\ttask-a.status\tneeds-decision: [key=scope] skip or re-implement\n
+unresolvable|main|signal: task-zz.status|1\t1\tsignal\ttask-zz.status\tsignal: task-zz.status\n
+corrupt|main|signal: task-a.status|not a queue row\n
+CASES
+
+  # Only main can repair supervision itself: a watcher-failure alarm still
+  # reaches main with the record present and a live, accepting branch listener.
+  repo="$TMP_ROOT/pi-away-alarm-root"
+  mkdir -p "$repo/bin"
+  install_pi_watch_extension_fixture "$repo"
+  plugin="$repo/.pi/extensions/fm-primary-pi-watch.ts"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'watcher: healthy pid=1 (beacon 0s)\n'
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh"
+  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_WATCH_REARM_RETRY_BASE_MS=5 FM_WATCH_REARM_RETRY_MAX_MS=10 FM_WATCH_REARM_RETRY_LIMIT=2 node --input-type=module 2>&1 <<'EOF'
+import { writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const offers = [];
+let prompt = "";
+let handler = null;
+const handlers = new Map();
+const bus = {
+  on(channel, h) {
+    handlers.set(channel, [...(handlers.get(channel) ?? []), h]);
+    return () => {};
+  },
+  emit(channel, data) {
+    for (const h of handlers.get(channel) ?? []) h(data);
+  },
+};
+bus.on("fm-branch-supervision:dispatch", (offer) => {
+  offers.push({ message: offer.message });
+  offer.accept();
+});
+const pi = {
+  on() {},
+  events: bus,
+  registerCommand(name, options) {
+    if (name === "fm-watch-arm-pi") handler = options.handler;
+  },
+  registerTool() {},
+  sendUserMessage: async (message) => {
+    prompt = message;
+  },
+};
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+mod.default(pi);
+await handler("", { ui: { notify() {} } });
+for (let i = 0; i < 250 && !prompt; i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 20));
+}
+if (!prompt.includes("external healthy watcher")) {
+  throw new Error(`a watcher failure under the away-posture record did not reach main: ${prompt}`);
+}
+if (offers.length !== 0) {
+  throw new Error(`a watcher failure was offered to the branch under the record: ${JSON.stringify(offers)}`);
+}
+EOF
+  )
+  status=$?
+  expect_code 0 "$status" "a watcher-failure alarm must still reach main under the record: $out"
+  [ -z "$out" ] || fail "Pi away alarm test printed output: $out"
+  pass "under the away-posture record every actionable row is offered to the branch while broken-queue wakes and watcher-failure alarms still reach main"
 }
 
 test_pi_handling_delivery_failure_is_typed_once() {
@@ -3989,6 +4203,7 @@ test_pi_distinct_files_mixed_batch_routes_whole_batch_to_main
 test_pi_heartbeat_is_not_ridden_into_main_by_a_co_present_needs_decision
 test_pi_heartbeat_restoration_failure_stays_on_main
 test_pi_watcher_failure_never_offered_to_branch
+test_pi_away_record_collapses_eligibility_and_keeps_vetoes_on_main
 test_pi_handling_delivery_failure_is_typed_once
 test_pi_hung_successor_falls_back_to_typed_wake
 test_pi_unretired_successor_falls_back_without_retry
