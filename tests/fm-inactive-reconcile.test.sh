@@ -8,6 +8,7 @@ set -u
 RECON="$ROOT/bin/fm-inactive-reconcile.sh"
 DRAIN="$ROOT/bin/fm-wake-drain.sh"
 WATCH="$ROOT/bin/fm-watch.sh"
+TEARDOWN="$ROOT/bin/fm-teardown.sh"
 TMP_ROOT=$(fm_test_tmproot fm-inactive-reconcile)
 
 set_mtime() { # <epoch> <path>
@@ -47,6 +48,12 @@ SH
 #!/usr/bin/env bash
 printf '%s\n' "$(basename "$0")" >> "${FM_FORGE_LOG:?}"
 exit 97
+SH
+  done
+  for tool in treehouse no-mistakes; do
+    cat > "$fake/$tool" <<'SH'
+#!/usr/bin/env bash
+exit 0
 SH
   done
   chmod +x "$fake"/*
@@ -112,6 +119,13 @@ run_report() { # <home> <child>
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" \
     FM_INACTIVE_CREW_STATE_BIN="$WORLD/fakebin/fm-crew-state.sh" \
     FM_FORGE_LOG="$WORLD/forge.log" "$RECON" report "$child"
+}
+
+run_teardown() { # <home> <child>
+  local home=$1 child=$2
+  PATH="$WORLD/fakebin:$PATH" FM_ROOT_OVERRIDE="$WORLD/root" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" \
+    FM_FORGE_LOG="$WORLD/forge.log" "$TEARDOWN" "$child"
 }
 
 wake_count() { # <home> <key prefix>
@@ -182,16 +196,28 @@ test_main_direct_terminal_presentation_receipt() {
 # actionable until successful teardown removes that metadata. The reminder
 # calls no forge and performs no cleanup or captain-call bypass itself.
 test_completed_scout_cleanup_remains_actionable_until_metadata_retires() {
-  local meta
+  local meta teardown_err teardown_status
   make_world completed-scout
   write_child "$MAIN" lookout 'done: full report ready'
   meta="$MAIN/state/lookout.meta"
   awk '{ sub(/^kind=ship$/, "kind=scout"); print }' "$meta" > "$meta.tmp"
-  printf 'decisions_reviewed=1\ndecision_keys=\n' >> "$meta.tmp"
   mv "$meta.tmp" "$meta"
   age "$meta"
   mkdir -p "$MAIN/data/lookout"
   printf '# Complete report\n' > "$MAIN/data/lookout/report.md"
+
+  teardown_err="$WORLD/teardown-refusal.err"
+  set +e
+  run_teardown "$MAIN" lookout >/dev/null 2> "$teardown_err"
+  teardown_status=$?
+  set -e
+  [ "$teardown_status" -ne 0 ] || fail "guarded teardown accepted a scout without a completed captain-call inventory"
+  assert_grep 'has not passed the captain-call completion gate' "$teardown_err" \
+    "guarded teardown did not explain its completion-gate refusal"
+  assert_present "$meta" "refused guarded teardown removed scout metadata"
+  assert_present "$MAIN/data/lookout/report.md" "refused guarded teardown removed the scout report"
+  printf 'decisions_reviewed=1\ndecision_keys=\n' >> "$meta"
+  age "$meta"
 
   FM_FAKE_CREW_STATE='done' run_reconcile "$MAIN" --startup
   [ "$(wake_count "$MAIN" 'inactive-outcome:')" = 1 ] \
@@ -211,7 +237,9 @@ test_completed_scout_cleanup_remains_actionable_until_metadata_retires() {
     || fail "live scout metadata did not keep cleanup actionable"
   ack_wakes "$MAIN" || fail "second scout cleanup reminder could not be acknowledged"
 
-  rm -f "$meta"
+  run_teardown "$MAIN" lookout >/dev/null 2> "$WORLD/teardown-success.err" \
+    || fail "guarded scout teardown did not succeed: $(cat "$WORLD/teardown-success.err")"
+  assert_absent "$meta" "successful guarded teardown left scout metadata"
   FM_FAKE_CREW_STATE='done' run_reconcile "$MAIN" --startup
   [ "$(wake_count "$MAIN" 'scout-cleanup:')" = 0 ] \
     || fail "retired scout metadata left a cleanup reminder active"
