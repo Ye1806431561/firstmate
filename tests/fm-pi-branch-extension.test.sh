@@ -4215,6 +4215,32 @@ if (!scoutSignalMixed.eligible || scoutSignalMixed.eligibleSeqs.join(",") !== "2
 if (scoutSignalMixed.mainOwnedKeys.join(",") !== "scout-complete.status") {
   throw new Error(`a completed scout signal was not independently main-owned: ${JSON.stringify(scoutSignalMixed)}`);
 }
+
+// Match the shared latest-event semantics rather than reading the physical tail:
+// explanatory prose cannot hide a complete done event, a later real event can,
+// and an unterminated done event is withheld until its newline arrives.
+writeFileSync(`${state}/scout-complete.status`, "done: full report ready\nReport remains available without another status event");
+writeFileSync(`${state}/.wake-queue`, "1\t1\tsignal\tscout-complete.status\tsignal: trailing prose");
+const scoutTrailingProse = scopeForUnreadWake(state, false);
+if (scoutTrailingProse.eligible || scoutTrailingProse.mainOwnedKeys.join(",") !== "scout-complete.status") {
+  throw new Error(`trailing prose hid a completed scout event: ${JSON.stringify(scoutTrailingProse)}`);
+}
+writeFileSync(`${state}/scout-complete.status`, "done: append still in progress");
+const scoutIncompleteDone = scopeForUnreadWake(state, false);
+if (!scoutIncompleteDone.eligible || scoutIncompleteDone.mainOwnedKeys.length !== 0) {
+  throw new Error(`an incomplete done event was treated as durable: ${JSON.stringify(scoutIncompleteDone)}`);
+}
+writeFileSync(`${state}/scout-complete.status`, "done: first report\nworking: report reopened\n");
+const scoutReopened = scopeForUnreadWake(state, false);
+if (!scoutReopened.eligible || scoutReopened.mainOwnedKeys.length !== 0) {
+  throw new Error(`a later working event did not supersede done: ${JSON.stringify(scoutReopened)}`);
+}
+writeFileSync(`${state}/scout-complete.status`, "done: full report ready\n");
+const scoutAway = scopeForUnreadWake(state, false, true);
+if (!scoutAway.eligible || scoutAway.eligibleSeqs.join(",") !== "1" ||
+  scoutAway.mainOwnedKeys.join(",") !== "scout-complete.status") {
+  throw new Error(`the away posture did not take a completed scout row: ${JSON.stringify(scoutAway)}`);
+}
 writeFileSync(
   `${state}/.wake-queue`,
   [

@@ -454,7 +454,7 @@ while [ ! -e "$FM_STOP_FILE" ]; do sleep 0.02; done
 SH
   chmod +x "$repo/bin/fm-watch-arm.sh"
   out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_ARM_LOG="$log" FM_STOP_FILE="$stop" node --input-type=module 2>&1 <<'EOF'
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 // Two independent runs against the SAME dispatcher build: with an accepting
@@ -551,6 +551,12 @@ if (scout.offers.length !== 1 || scout.offers[0].eligible !== false) {
 if (!scout.mainPrompt.includes("FIRSTMATE WATCHER WAKE") || !scout.mainPrompt.includes(scoutReason)) {
   throw new Error(`a completed scout did not reach main: ${scout.mainPrompt}`);
 }
+writeFileSync(`${state}/.afk-contract`, "schema=fm-afk-contract.v1\n");
+const awayScout = await runScenario(true, scoutReason, scoutQueue);
+if (awayScout.offers.length !== 1 || awayScout.offers[0].eligible !== true || awayScout.mainPrompt !== "") {
+  throw new Error(`the away posture did not route a completed scout to the branch: ${JSON.stringify(awayScout)}`);
+}
+rmSync(`${state}/.afk-contract`);
 writeFileSync(`${state}/scout-working.meta`, "project=/projects/approved\nwindow=fm-scout-working\nkind=scout\n");
 writeFileSync(`${state}/scout-working.status`, "working: audit still running\n");
 const workingReason = "signal: scout-working.status";

@@ -30,8 +30,9 @@
 # Every heredoc here stays outside a command substitution: `VAR=$(cat <<EOF ...)`
 # breaks parsing of the whole file on Bash 3.2 (tests/fm-brief.test.sh).
 # fm_engineering_practice_block owns the on-demand worker pointer shared by a
-# new ship/scout brief and a promoted scout's ship instructions. The leaf skill
-# owns the procedure so generated instructions carry only its trigger.
+# new ship/scout brief and both copies of a promoted scout's durable ship
+# contract. The leaf skill owns the procedure so generated instructions carry
+# only its trigger.
 # fm_brief_worker_role owns the ship/scout role scope. bin/fm-spawn.sh is its one
 # emitter, supplying it first in every ship/scout launch brief and never to a
 # secondmate charter. It names the one task-owned steering inbox without
