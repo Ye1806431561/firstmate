@@ -1,0 +1,27 @@
+=== dirty local edit: updater output ===
+firstmate: updated c3dac6c..359e1cc (instructions changed: AGENTS.md, bin, .agents/skills)
+no watches registered
+secondmate sm1: skipped: dirty working tree
+reread-firstmate: yes
+restart-secondmates: none
+nudge-secondmates: none
+preserved_head=c3dac6c4829274b57a83984f1d23404e5ee1320a
+original_head=c3dac6c4829274b57a83984f1d23404e5ee1320a
+preserved_edit=uncommitted local edit
+=== unique divergence: updater output ===
+firstmate: updated 5680816..03b4b02 (instructions changed: AGENTS.md, bin, .agents/skills)
+no watches registered
+secondmate sm1: skipped: diverged from origin/main; reconciliation required (record: /private/var/folders/d6/nzzyj4qj315_hvkfyd6pdhxh0000gn/T/fm-update-evidence.sRRYDi/diverged/home/state/.secondmate-update-reconcile/sm1.pending)
+reread-firstmate: yes
+restart-secondmates: none
+nudge-secondmates: none
+preserved_head=e14ba26376aa0ef87184529b66bf3f9e56d83c3c
+original_head=e14ba26376aa0ef87184529b66bf3f9e56d83c3c
+preserved_version=fork work
+=== durable recovery record ===
+schema=fm-secondmate-update-reconcile.v1
+id=sm1
+status=diverged
+local_commit=e14ba26376aa0ef87184529b66bf3f9e56d83c3c
+target_commit=03b4b02007811ecc378d230f3da187cf07434b0e
+target=origin/main

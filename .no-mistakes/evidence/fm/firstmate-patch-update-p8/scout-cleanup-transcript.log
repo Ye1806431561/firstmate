@@ -1,0 +1,19 @@
+=== unsafe cleanup attempt ===
+exit=1
+fm-captain-hold: origin lookout has no completed captain-call inventory
+REFUSED: scout task lookout has not passed the captain-call completion gate.
+Inventory its report and any visual review through bin/fm-captain-hold.sh before teardown.
+metadata_preserved=yes report_preserved=yes
+=== initial completed-scout reminder ===
+actionable: completed scout still has live task records and needs guarded cleanup: child=lookout report=data/lookout/report.md; run bin/fm-teardown.sh lookout, which must pass the captain-call completion gate and every cleanup safety check
+=== reminder after acknowledgement 1 ===
+actionable: completed scout still has live task records and needs guarded cleanup: child=lookout report=data/lookout/report.md; run bin/fm-teardown.sh lookout, which must pass the captain-call completion gate and every cleanup safety check
+=== reminder after acknowledgement 2 ===
+actionable: completed scout still has live task records and needs guarded cleanup: child=lookout report=data/lookout/report.md; run bin/fm-teardown.sh lookout, which must pass the captain-call completion gate and every cleanup safety check
+=== guarded cleanup after gate completion ===
+teardown lookout complete (window firstmate:fm-lookout, worktree /private/var/folders/d6/nzzyj4qj315_hvkfyd6pdhxh0000gn/T/fm-scout-evidence.wRXv3d/completed-scout/main/projects/lookout)
+Backlog: lookout just finished (this home keeps no markdown backlog at /private/var/folders/d6/nzzyj4qj315_hvkfyd6pdhxh0000gn/T/fm-scout-evidence.wRXv3d/completed-scout/main/data/backlog.md). Update /private/var/folders/d6/nzzyj4qj315_hvkfyd6pdhxh0000gn/T/fm-scout-evidence.wRXv3d/completed-scout/main/data/backlog.md - move lookout to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+metadata_preserved=no
+=== scan after successful cleanup ===
+cleanup_wakes=0
+forge_calls=0
