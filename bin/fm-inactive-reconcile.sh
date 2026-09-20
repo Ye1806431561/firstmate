@@ -51,13 +51,6 @@
 # outcome record or wake the supervisor.
 # Working, paused, parked, blocked, unknown, persistent secondmates, and
 # captain-held work retain their existing supervision semantics.
-# A done scout whose task record survives is a separate cleanup obligation:
-# its first inactive outcome names the guarded cleanup, and after that outcome
-# is presented or reported the scan requeues one `scout-cleanup:<fingerprint>`
-# reminder per cadence until teardown removes the task metadata. The reminder
-# never performs cleanup itself; bin/fm-teardown.sh remains the sole owner of
-# the report, captain-call completion, lease, unlanded-work, and destructive
-# safety gates.
 #
 # A terminal-outcomes/<fingerprint>.pending record remains until its upstream
 # receipt is durable.
@@ -66,6 +59,13 @@
 # path share the same receipt store.
 # In a main home, a presentation-stage record is acknowledged by fm-wake-drain
 # only after its corresponding inactive-outcome wake is handled.
+# A done scout whose task metadata still exists remains actionable after that
+# receipt: each due scan publishes one guarded-cleanup reminder until successful
+# fm-teardown retires the record, and a secondmate's parent delivery does not
+# discharge this local cleanup obligation.
+# The reminder names the report when readable and directs the supervisor through
+# fm-teardown, which retains the captain-call completion gate and cleanup checks;
+# this scanner never cleans up directly and never calls a forge.
 # A receipt is intentionally independent of .hb-surfaced-* bookkeeping.
 #
 # New fm-terminal-outcome.v1 receipts contain schema, fingerprint, task_id,
@@ -377,20 +377,23 @@ notice_parent_report_failed() { # <record> <fingerprint> <payload>
   queue_notice_once "$record" "inactive-reconcile:$fingerprint" "$payload" || true
 }
 
-# The whole terminal line a child's ledger ends in, or non-zero when the ledger
-# is absent, unusable, still being appended (no trailing newline yet), or does
-# not end in a done or failed line.
+# The whole terminal event a child's ledger states, or non-zero when the ledger
+# is absent, unusable, or states no done or failed event (1), or when that event
+# is the line still being appended (2, no trailing newline yet). The event is
+# selected through the shared latest-event reader, so the ledger path owns a
+# terminal record whose continuation prose trails it, and an unfinished line of
+# ordinary prose withholds nothing.
 child_terminal_ledger_line() { # <status>
   local status=$1 snapshot last marker='__FM_LEDGER_SNAPSHOT_END__'
   [ -f "$status" ] && [ ! -L "$status" ] && [ -s "$status" ] || return 1
+  last=$(last_status_line "$status")
+  case "$(status_line_verb "$last")" in done|failed) ;; *) return 1 ;; esac
   snapshot=$(cat "$status"; printf '%s' "$marker") || return 1
-  case "$snapshot" in *$'\n'"$marker") ;; *) return 1 ;; esac
-  snapshot=${snapshot%"$marker"}
-  last=$(printf '%s' "$snapshot" | grep -v '^[[:space:]]*$' | tail -1)
-  case "$(status_line_verb "$last")" in
-    done|failed) printf '%s\n' "$last" ;;
-    *) return 1 ;;
+  case "$snapshot" in
+    *$'\n'"$marker") ;;
+    "$last$marker"|*$'\n'"$last$marker") return 2 ;;
   esac
+  printf '%s\n' "$last"
 }
 
 # Claim one already-delivered inactive fallback as the delivery of this ledger
@@ -431,12 +434,11 @@ report_child_ledger_locked() { # <id> <meta>
   pr=$(pr_for_task "$meta" "$last")
   incarnation=$(meta_incarnation "$meta")
   fingerprint=$(sha256_text "$incarnation|$id|$state|ledger|$last")
-  previous=$(grep -v '^[[:space:]]*$' "$status" 2>/dev/null \
-    | tail -2 | awk 'NR == 1 { first = $0 } NR == 2 { print first }' || true)
-  predecessor_head=$(sha256_text "$previous")
   outcome_key="child-outcome-$id-$state-${fingerprint:0:8}"
   ensure_record "$fingerprint" "$id" "$incarnation" "$state" "$outcome_key" direct upstream "$pr" || return 1
   [ -n "$RECORD_PENDING" ] || return 0
+  last_status_line "$status" previous >/dev/null
+  predecessor_head=$(sha256_text "$previous")
   if claim_inactive_report_for_ledger "$id" "$incarnation" "$state" "$fingerprint" "$predecessor_head"; then
     # The fallback line is already on the parent channel. This reported ledger
     # receipt records that its richer rendering owes no second publication.
@@ -500,7 +502,7 @@ report_child() { # <id>
 }
 
 reconcile_direct_child_locked() { # <id> <meta> <secondmate-id-or-empty> <timeout>
-  local id=$1 meta=$2 self=${3:-} timeout=$4 status turn last age state_line state pr incarnation fingerprint outcome_key payload kind ledger_line='' state_rc=0
+  local id=$1 meta=$2 self=${3:-} timeout=$4 status turn last age state_line state pr incarnation fingerprint outcome_key payload kind ledger_line='' ledger_rc=1 state_rc=0
   [ -f "$meta" ] && [ ! -L "$meta" ] || return 0
   kind=$(meta_field "$meta" kind)
   [ "$kind" = secondmate ] && return 0
@@ -508,15 +510,21 @@ reconcile_direct_child_locked() { # <id> <meta> <secondmate-id-or-empty> <timeou
   turn="$STATE/$id.turn-ended"
   last=$(last_status_line "$status")
   status_line_verb "$last" | grep -Fx captain-held >/dev/null 2>&1 && return 0
+  # A complete secondmate-child ledger belongs to the ledger-first delivery
+  # path. Preserve its no-state-read behavior, but after the cadence threshold
+  # a done scout still owes a local guarded-cleanup reminder until its records
+  # retire. An unfinished terminal event remains withheld exactly as before.
   if [ -n "$self" ]; then
-    ledger_line=$(child_terminal_ledger_line "$status" 2>/dev/null || true)
+    if ledger_line=$(child_terminal_ledger_line "$status"); then
+      ledger_rc=0
+    else
+      ledger_rc=$?
+    fi
+    [ "$ledger_rc" -ne 2 ] || return 0
   fi
   age=$(last_activity_age "$meta" "$status" "$turn")
   [ "$age" -ge "$FM_INACTIVE_RECONCILE_SECS" ] || return 0
-  # A secondmate child's terminal ledger belongs to the ledger-first parent
-  # delivery above, but a delivered done scout still needs a local cleanup
-  # reminder until its own home retires the task records.
-  if [ -n "$ledger_line" ]; then
+  if [ "$ledger_rc" -eq 0 ]; then
     if [ "$kind" = scout ] && [ "$(status_line_verb "$ledger_line")" = 'done' ]; then
       incarnation=$(meta_incarnation "$meta")
       fingerprint=$(sha256_text "$incarnation|$id|done|ledger|$ledger_line")
@@ -524,12 +532,21 @@ reconcile_direct_child_locked() { # <id> <meta> <secondmate-id-or-empty> <timeou
     fi
     return 0
   fi
-  state_line=$(fm_run_timed "$timeout" env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+  state_line=$(fm_run_timed "$timeout" env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" FM_CREW_STATE_NO_FORGE=1 \
     "$CREW_STATE_BIN" "$id" 2>/dev/null) || state_rc=$?
   [ "$state_rc" -ne 124 ] || return 3
   last=$(last_status_line "$status")
   if [ -n "$self" ]; then
-    case "$(status_line_verb "$last")" in done|failed) return 0 ;; esac
+    if ledger_line=$(child_terminal_ledger_line "$status"); then
+      if [ "$kind" = scout ] && [ "$(status_line_verb "$ledger_line")" = 'done' ]; then
+        incarnation=$(meta_incarnation "$meta")
+        fingerprint=$(sha256_text "$incarnation|$id|done|ledger|$ledger_line")
+        queue_scout_cleanup_reminder "$id" "$fingerprint" || true
+      fi
+      return 0
+    elif [ "$?" -eq 2 ]; then
+      return 0
+    fi
   fi
   case "$state_line" in
     'state: done '*) state='done' ;;

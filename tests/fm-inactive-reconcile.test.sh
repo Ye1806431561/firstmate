@@ -160,12 +160,18 @@ reap() { kill "$1" 2>/dev/null || true; wait "$1" 2>/dev/null || true; }
 # The main retains a terminal presentation receipt until the corresponding wake
 # is handled and acknowledged.
 test_main_direct_terminal_presentation_receipt() {
+  local err seq generation
   make_world main-direct; write_child "$MAIN" child 'done: PR https://example.test/owner/repo/pull/1 checks green'
   FM_FAKE_CREW_STATE='done' run_reconcile "$MAIN" --startup
   [ "$(wake_count "$MAIN" 'inactive-outcome:')" = 1 ] || fail "main did not queue terminal presentation"
   [ "$(outcome_count "$MAIN" pending)" = 1 ] || fail "main did not retain presentation receipt"
 
-  ack_wakes "$MAIN" || fail "main presentation did not require durable acknowledgement"
+  err="$WORLD/drain.err"
+  FM_HOME="$MAIN" FM_STATE_OVERRIDE="$MAIN/state" "$DRAIN" >/dev/null 2> "$err"
+  seq=$(sed -n 's/^WAKE_ACK_REQUIRED:.*--ack-through \([0-9][0-9]*\) --recovery-generation .*/\1/p' "$err")
+  generation=$(sed -n 's/^WAKE_ACK_REQUIRED:.*--recovery-generation \([A-Za-z0-9._-][A-Za-z0-9._-]*\)$/\1/p' "$err")
+  [ -n "$seq" ] && [ -n "$generation" ] || fail "main presentation did not require durable acknowledgement"
+  FM_HOME="$MAIN" FM_STATE_OVERRIDE="$MAIN/state" "$DRAIN" --ack-through "$seq" --recovery-generation "$generation"
   [ "$(outcome_count "$MAIN" presented)" = 1 ] || fail "acknowledged presentation did not receive its own receipt"
   pass "main direct terminal presentation has a durable receipt"
 }
@@ -193,7 +199,7 @@ test_completed_scout_cleanup_remains_actionable_until_metadata_retires() {
   assert_grep 'completed scout still has live task records and needs guarded cleanup: child=lookout report=data/lookout/report.md' \
     "$MAIN/state/.wake-queue" "completed scout outcome did not name its report and cleanup obligation"
   assert_grep 'run bin/fm-teardown.sh lookout, which must pass the captain-call completion gate and every cleanup safety check' \
-    "$MAIN/state/.wake-queue" "completed scout outcome weakened the guarded teardown contract"
+    "$MAIN/state/.wake-queue" "completed scout outcome weakened the guarded teardown refusal contract"
   ack_wakes "$MAIN" || fail "completed scout outcome could not be acknowledged"
 
   FM_FAKE_CREW_STATE='done' run_reconcile "$MAIN" --startup
@@ -232,6 +238,8 @@ test_local_secondmate_delivers_terminal_ledger_line() {
   FM_FAKE_CREW_STATE='unknown' run_reconcile "$MATE"
   [ "$(grep -c 'child-outcome-child-done' "$MAIN/state/mate.status")" = 1 ] \
     || fail "a second poll delivered the same ledger line again"
+  printf 'Report at /tmp/report.md\n' >> "$MATE/state/child.status"
+  age "$MATE/state/child.status"
   FM_FAKE_CREW_STATE='done' run_reconcile "$MATE" --startup
   ! grep -q 'inactive-outcome-' "$MAIN/state/mate.status" \
     || fail "the inactive path reported a child the ledger delivery already owned"
@@ -260,7 +268,63 @@ test_secondmate_completed_scout_gets_local_cleanup_reminder() {
     || fail "secondmate parent delivery discharged the local scout cleanup reminder"
   assert_grep 'report=data/lookout/report.md' "$MATE/state/.wake-queue" \
     "secondmate cleanup reminder lost the scout report"
+  [ ! -s "$WORLD/forge.log" ] || fail "secondmate scout cleanup reminder invoked a forge command"
   pass "secondmate scout outcomes keep guarded cleanup actionable in the owning home"
+}
+
+# A terminal record written as a multi-line block belongs to the ledger path
+# whether the block lands before or during the state read: it is delivered once,
+# under the ledger's own outcome key, and the inactive fallback stays out of it.
+test_secondmate_multiline_terminal_outcome_is_delivered_once() {
+  local terminal timing key
+  for terminal in 'done' failed; do
+    for timing in before during; do
+      make_world "multiline-$terminal-$timing"; bind_secondmate local
+      write_child "$MATE" child 'working: finishing validation'
+      if [ "$timing" = before ]; then
+        printf '%s: validation finished\nSee the report for details.\n\n' "$terminal" >> "$MATE/state/child.status"
+        age "$MATE/state/child.status"
+      else
+        cat > "$WORLD/fakebin/fm-crew-state.sh" <<'SH'
+#!/usr/bin/env bash
+printf '%s: validation finished\nSee the report for details.\n\n' "$FM_FAKE_CREW_STATE" >> "$FM_STATE_OVERRIDE/$1.status"
+printf 'state: %s · source: fake\n' "$FM_FAKE_CREW_STATE"
+SH
+      fi
+      FM_FAKE_CREW_STATE="$terminal" run_reconcile "$MATE" --startup
+      age "$MATE/state/child.status"
+      FM_FAKE_CREW_STATE="$terminal" run_reconcile "$MATE" --startup
+      run_report "$MATE" child
+      key=$(reported_outcome_key "$MATE" child "$terminal") \
+        || fail "$terminal with trailing prose arriving $timing state read was not owned by the ledger"
+      grep -Fq "$terminal [key=$key]: child child $terminal: validation finished" "$MAIN/state/mate.status" \
+        || fail "$terminal with trailing prose arriving $timing state read was lost: $(cat "$MAIN/state/mate.status" 2>/dev/null)"
+      [ "$(wc -l < "$MAIN/state/mate.status" | tr -d ' ')" = 1 ] \
+        || fail "$terminal with trailing prose arriving $timing state read was delivered twice"
+      [ "$(outcome_count "$MATE" reported)" = 1 ] \
+        || fail "multiline $terminal outcome did not retain exactly one receipt"
+    done
+  done
+  pass "multiline terminal outcomes are reported once before or during a state read"
+}
+
+# A child that dies mid-prose cannot hide an outcome its run already proves: an
+# unterminated continuation line states no terminal event, so the inactive
+# fallback still reports the attributed failure upward.
+test_secondmate_unterminated_prose_reports_run_outcome() {
+  make_world unterminated-prose; bind_secondmate local
+  write_child "$MATE" child 'working: compiling'
+  printf 'Still going' >> "$MATE/state/child.status"
+  age "$MATE/state/child.status"
+  FM_FAKE_CREW_STATE='failed' run_reconcile "$MATE" --startup
+  grep -Fq "failed [key=inactive-outcome-mate-child-failed]: inactive terminal child=child" "$MAIN/state/mate.status" \
+    || fail "an unterminated prose line withheld a proven failure: $(cat "$MAIN/state/mate.status" 2>/dev/null)"
+  [ "$(outcome_count "$MATE" reported)" = 1 ] || fail "the fallback report did not retain its receipt"
+  age "$MATE/state/child.status"
+  FM_FAKE_CREW_STATE='failed' run_reconcile "$MATE" --startup
+  [ "$(wc -l < "$MAIN/state/mate.status" | tr -d ' ')" = 1 ] \
+    || fail "the proven failure was reported twice"
+  pass "an unterminated continuation line does not withhold a proven child outcome"
 }
 
 # A busy child cannot keep later ledger outcomes from being visited, and is
@@ -449,14 +513,18 @@ test_secondmate_partial_ledger_line_waits_for_newline() {
   make_world partial; bind_secondmate local
   write_child "$MATE" child 'working: nearly there'
   printf 'done: half writ' >> "$MATE/state/child.status"
-  FM_FAKE_CREW_STATE='unknown' run_reconcile "$MATE"
-  [ ! -e "$MAIN/state/mate.status" ] || ! grep -q 'child-outcome-' "$MAIN/state/mate.status" \
+  age "$MATE/state/child.status"
+  FM_FAKE_CREW_STATE='done' run_reconcile "$MATE" --startup
+  [ ! -s "$MAIN/state/mate.status" ] \
     || fail "an unterminated ledger line was delivered: $(cat "$MAIN/state/mate.status")"
   printf 'ten\n' >> "$MATE/state/child.status"
   FM_FAKE_CREW_STATE='unknown' run_reconcile "$MATE"
   key=$(reported_outcome_key "$MATE" child 'done') || fail "completed ledger receipt key missing"
   grep -Fq "done [key=$key]: child child done: half written" "$MAIN/state/mate.status" \
     || fail "the completed line was not delivered once its newline landed"
+  FM_FAKE_CREW_STATE='done' run_reconcile "$MATE" --startup
+  [ "$(wc -l < "$MAIN/state/mate.status" | tr -d ' ')" = 1 ] \
+    || fail "completing the partial line delivered the outcome twice"
   pass "a ledger line still being appended waits for its newline"
 }
 
@@ -891,10 +959,27 @@ test_reconciliation_never_calls_forge() {
   pass "reconciliation makes zero forge or PR API calls"
 }
 
+test_reconciliation_sets_no_forge_mode_for_state_read() {
+  make_world no-forge-env; write_child "$MAIN" child 'working: quiet since'
+  cat > "$WORLD/fakebin/fm-crew-state.sh" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "${FM_CREW_STATE_NO_FORGE:-}" > "${FM_NO_FORGE_LOG:?}"
+printf 'state: done · source: fake\n'
+SH
+  chmod +x "$WORLD/fakebin/fm-crew-state.sh"
+  export FM_NO_FORGE_LOG="$WORLD/no-forge.log"
+  run_reconcile "$MAIN" --startup
+  unset FM_NO_FORGE_LOG
+  assert_grep '1' "$WORLD/no-forge.log" "inactive reconciliation did not set crew-state no-forge mode"
+  pass "reconciliation state reads set no-forge mode"
+}
+
 test_main_direct_terminal_presentation_receipt
 test_completed_scout_cleanup_remains_actionable_until_metadata_retires
 test_local_secondmate_delivers_terminal_ledger_line
 test_secondmate_completed_scout_gets_local_cleanup_reminder
+test_secondmate_multiline_terminal_outcome_is_delivered_once
+test_secondmate_unterminated_prose_reports_run_outcome
 test_busy_child_does_not_starve_later_ledger_outcomes
 test_secondmate_ledger_delivery_carries_report_and_failure
 test_pr_field_requires_recorded_pr_or_ready_signal_line
@@ -922,5 +1007,6 @@ test_full_scan_budget_includes_wake_lock_wait
 test_notice_recovery_does_not_duplicate_wake
 test_missing_parent_binding_names_itself
 test_reconciliation_never_calls_forge
+test_reconciliation_sets_no_forge_mode_for_state_read
 
 echo "all inactive reconciliation tests passed"

@@ -21,6 +21,16 @@
 // consumes at the user message_start carrying the exact wake text; either
 // event finishes the pending record, and a still-unconsumed record rides the
 // replacement handoff.
+//
+// Postures (stated once here; docs/pi-supervision-branch.md "Postures"):
+// the away-posture record state/.afk-contract is read as a file at every
+// routing decision, never inferred from chat. While it exists every
+// actionable row is offered to the branch as eligible and main is offered
+// nothing the branch can take; a wake the branch declines or cannot take
+// (a broken branch, an unresolvable or corrupt queue) and every
+// watcher-failure alarm still reach main exactly as attended, because only
+// main can repair supervision itself. Nothing else about delivery or
+// consumption changes.
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
@@ -31,6 +41,7 @@ import { Box, Container, Text, type Component } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { registerFirstmateTool } from "./lib/fm-native-contract.ts";
 import {
+  afkPostureRecordPresent,
   createBranchDispatchOffer,
   FM_BRANCH_DISPATCH_EVENT,
   scopeForUnreadWake,
@@ -606,12 +617,18 @@ export default function (pi: ExtensionAPI) {
     // signal/stale row still reach the branch on this cycle; it must never
     // also let a check-kind trigger itself slip past main's delivery.
     const isCheckTrigger = /^check:/.test(message);
-    const scope = scopeForUnreadWake(state, heartbeat);
-    // A signal/stale close for any main-owned task gets the identical treatment
-    // as a check-kind trigger. This includes decision-owned rows and completed
-    // scout lifecycle rows: until that row is read, a later signal or stale
-    // trigger for the same task stays on main. Other tasks and heartbeat
-    // handling remain independent.
+    // The away posture collapses the partition below: every actionable row is
+    // branch-eligible and the trigger class no longer forces anything to main
+    // (lib/fm-branch-dispatch.ts owns the per-row rule).
+    const afk = afkPostureRecordPresent(state);
+    const scope = scopeForUnreadWake(state, heartbeat, afk);
+    // A signal or stale close for any attended-main-owned task gets the same
+    // treatment as a check-kind trigger. That set covers open captain decisions
+    // and completed scouts whose report review and guarded cleanup must stay in
+    // main's lifecycle while attended. The cross-reference deliberately includes
+    // every unread row for those classes: until it is read, a later signal or
+    // stale trigger for the same task stays on main. Other tasks and heartbeat
+    // handling remain independent, and the away posture still takes every row.
     const triggerKeys = /^signal:/.test(message)
       ? message
         .slice("signal:".length)
@@ -625,8 +642,12 @@ export default function (pi: ExtensionAPI) {
       scope.taskByWakeKey[key] ?? scope.taskByWakeKey[key.replace(/^fm-/, "")] ?? key;
     const mainOwnedTasks = new Set(scope.mainOwnedKeys.map(taskIdentity));
     const isMainOwnedTrigger = triggerKeys.some((key) => mainOwnedTasks.has(taskIdentity(key)));
-    const eligible = !isCheckTrigger && !isMainOwnedTrigger && scope.eligible;
-    const offer = createBranchDispatchOffer(message, scope.projects, heartbeat, eligible);
+    const attendedEligible = !isCheckTrigger && !isMainOwnedTrigger && (
+      afk ? scopeForUnreadWake(state, heartbeat, false).eligible : scope.eligible
+    );
+    const eligible = afk ? scope.eligible : attendedEligible;
+    const awayOnly = Boolean(eligible && !attendedEligible);
+    const offer = createBranchDispatchOffer(message, scope.projects, heartbeat, eligible, awayOnly);
     pi.events?.emit?.(FM_BRANCH_DISPATCH_EVENT, offer);
     return offer.accepted ? offer.settlement : null;
   }

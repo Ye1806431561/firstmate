@@ -1,4 +1,5 @@
-import { lstatSync, readdirSync, readFileSync } from "node:fs";
+import { lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { runCommandAsync } from "./fm-async-exec.ts";
 
 // Shared wake-dispatch handshake between the Pi watcher extension (the
@@ -15,8 +16,31 @@ import { runCommandAsync } from "./fm-async-exec.ts";
 // means no branch took it and the watcher delivers to main exactly as it did
 // before the branch existed. Watcher-failure alarms are never offered - only
 // main can repair the watcher cycle (fm_watch_arm_pi lives on main).
+//
+// Postures (docs/pi-supervision-branch.md "Postures"). The away-posture record
+// state/.afk-contract (owner: bin/fm-afk-contract.sh) is the posture; it is
+// read as a file at every routing decision, never inferred from chat. While
+// it exists the branch takes EVERY actionable row - check rows, decision-owned
+// rows, and heartbeat rows included - and main is offered nothing the branch
+// can take. The two vetoes that describe a broken queue stay vetoes in both
+// postures, and such a wake, like every watcher-failure alarm, still falls
+// back to main exactly as attended, because only main can repair supervision
+// itself; parking main is a cost measure, continuity is the safety property.
 
 export const FM_BRANCH_DISPATCH_EVENT = "fm-branch-supervision:dispatch";
+
+// The away-posture record's state-relative filename, exactly as
+// bin/fm-afk-contract.sh writes it. Presence is the only fact read here; the
+// guarded scripts validate the record themselves (bin/fm-lease-lib.sh).
+export const AFK_CONTRACT_FILE = ".afk-contract";
+
+export function afkPostureRecordPresent(state: string): boolean {
+  try {
+    return statSync(join(state, AFK_CONTRACT_FILE)).isFile();
+  } catch {
+    return false;
+  }
+}
 
 export type UnreadWakeScopeStatus = "safe" | "empty" | "unsafe";
 
@@ -55,12 +79,26 @@ export interface UnreadWakeScope {
    */
   corrupted: boolean;
   /**
-   * Exact signal/stale keys that must stay on main for any reason, including
-   * decision-owned rows and completed scout lifecycle events. The watcher
-   * cross-references these keys by task so one main-owned row keeps its whole
-   * triggering batch on main without vetoing unrelated branch work.
+   * The exact "key" field of every attended-main-owned signal or stale row
+   * this scan found. That includes decision-owned rows and completed scouts,
+   * whose report, captain-call review, and guarded cleanup stay in one main
+   * lifecycle while attended. In the away posture these rows remain listed so
+   * the dispatcher can calculate the attended counterfactual, but they are
+   * eligible for the branch under the away authority contract.
    */
   mainOwnedKeys: string[];
+  /**
+   * The check-kind rows included in eligibleSeqs. Non-empty only in the away
+   * posture, where the branch takes main's rows too; a check row names no
+   * task, so a prompt that claims one is not scoped by task.
+   */
+  checkSeqs: string[];
+  /**
+   * The heartbeat rows included in eligibleSeqs. A heartbeat names no task,
+   * so a prompt that claims one is not scoped by task, including when a
+   * non-heartbeat wake claims it in the away posture.
+   */
+  heartbeatSeqs: string[];
   taskByWakeKey: Record<string, string>;
 }
 
@@ -72,6 +110,8 @@ const EMPTY_SCOPE: UnreadWakeScope = {
   eligibleTasks: [],
   corrupted: false,
   mainOwnedKeys: [],
+  checkSeqs: [],
+  heartbeatSeqs: [],
   taskByWakeKey: {},
 };
 const UNSAFE_SCOPE: UnreadWakeScope = {
@@ -82,6 +122,8 @@ const UNSAFE_SCOPE: UnreadWakeScope = {
   eligibleTasks: [],
   corrupted: true,
   mainOwnedKeys: [],
+  checkSeqs: [],
+  heartbeatSeqs: [],
   taskByWakeKey: {},
 };
 
@@ -98,14 +140,11 @@ const UNSAFE_SCOPE: UnreadWakeScope = {
 // (fm-primary-pi-watch.ts forces every check-kind TRIGGER to main), so nothing
 // starves by being left behind.
 //
-// A signal row whose payload is "needs-decision:"-prefixed, a stale row for a
-// task with an open needs-decision or a current captain-held declaration, or
-// any signal/stale row for a completed scout gets the identical treatment: excluded from
-// eligibleSeqs, never a scan veto, and forced to main on its own triggering
-// close (fm-primary-pi-watch.ts's offerWakeToBranch). Main owns the scout's
-// report relay, captain-call completion gate, and guarded cleanup as one
-// lifecycle; a branch outcome must not make main treat that work as settled.
-// Heartbeat handling remains independent.
+// A signal row whose payload is "needs-decision:"-prefixed, or a stale row
+// for a task with an open needs-decision or a current captain-held declaration,
+// gets the identical treatment: excluded from eligibleSeqs, never a scan veto,
+// and forced to main on its own triggering close (fm-primary-pi-watch.ts's
+// offerWakeToBranch). Heartbeat handling remains independent.
 //
 // That applies to a heartbeat review too, and it is the whole point: a
 // heartbeat used to be deferred to main merely because some unrelated check
@@ -123,6 +162,13 @@ const UNSAFE_SCOPE: UnreadWakeScope = {
 // this repo's fm_wake_append could never have produced (an unknown kind, or a
 // line that fails the structural tab-field check) also still vetoes the whole
 // scan - that is queue corruption, not an everyday mixed queue.
+//
+// In the away posture (`afk`, the dispatcher's read of the away-posture
+// record) the partition above collapses: main is parked, so check rows,
+// decision-owned signal and stale rows, and heartbeat rows are all claimed by
+// the branch on whatever wake finds them unread. The two vetoes that describe
+// a broken queue rather than a routing choice - an unresolvable task-local row
+// and a structurally invalid or unknown row - stay vetoes in both postures.
 function statusLineVerb(line: string): string {
   const beforeColon = line.split(":", 1)[0].split("[", 1)[0].trim();
   const words = beforeColon.split(/\s+/);
@@ -146,6 +192,45 @@ function statusLineNote(line: string): string {
   if (/\[key=[^\]]*\]/.test(line.slice(0, colon))) return note;
   const match = note.match(/^\[key=([A-Za-z0-9._-]+)\]/);
   return match ? note.slice(match[0].length).trimStart() : note;
+}
+
+interface LatestStatusEvent {
+  line: string;
+  complete: boolean;
+}
+
+// TypeScript counterpart of bin/fm-classify-lib.sh's latest-event read for the
+// routing fact needed here. Continuation prose cannot hide a completed event,
+// while a later recognized event supersedes it. A terminal event that is the
+// physical unterminated tail is still being appended and is not acted on yet;
+// unterminated prose after a newline-terminated event does not withhold it.
+function latestStatusEvent(content: string, resolveVerb: string, heldVerb: string): LatestStatusEvent | null {
+  const eventVerbs = new Set([
+    "working",
+    "needs-decision",
+    "blocked",
+    "done",
+    "failed",
+    "note",
+    process.env.FM_CLASSIFY_PAUSED_VERB || "paused",
+    resolveVerb,
+    heldVerb,
+  ]);
+  const lines = content.split(/\r?\n/);
+  let latestLine = "";
+  let latestIndex = -1;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!line.includes(":")) continue;
+    if (!eventVerbs.has(statusLineVerb(line))) continue;
+    latestLine = line;
+    latestIndex = index;
+  }
+  if (latestIndex < 0) return null;
+  return {
+    line: latestLine,
+    complete: latestIndex < lines.length - 1 || /\r?\n$/.test(content),
+  };
 }
 
 interface StaleDecisionCacheEntry {
@@ -188,7 +273,7 @@ function hasOpenNeedsDecision(
   return [...open.values()].includes("needs-decision");
 }
 
-export function scopeForUnreadWake(state: string, heartbeat: boolean): UnreadWakeScope {
+export function scopeForUnreadWake(state: string, heartbeat: boolean, afk = false): UnreadWakeScope {
   let queue = "";
   try {
     queue = readFileSync(`${state}/.wake-queue`, "utf8");
@@ -232,6 +317,8 @@ export function scopeForUnreadWake(state: string, heartbeat: boolean): UnreadWak
   const eligibleSeqs: string[] = [];
   const eligibleTasks = new Set<string>();
   const mainOwnedKeys: string[] = [];
+  const checkSeqs: string[] = [];
+  const heartbeatSeqs: string[] = [];
   const staleDecisionOwnership = new Map<string, boolean>();
   const resolveVerb = process.env.FM_CLASSIFY_RESOLVE_VERB || "resolved";
   const heldVerb = process.env.FM_CLASSIFY_CAPTAIN_HELD_VERB || "captain-held";
@@ -247,9 +334,10 @@ export function scopeForUnreadWake(state: string, heartbeat: boolean): UnreadWak
     try {
       const version = statusFileVersion(statusPath);
       if (!version) return false;
-      const lines = readFileSync(statusPath, "utf8").split(/\r?\n/).filter((line) => /\S/.test(line));
+      const content = readFileSync(statusPath, "utf8");
       if (statusFileVersion(statusPath) !== version) return null;
-      const completed = statusLineVerb(lines.at(-1) ?? "") === "done";
+      const latest = latestStatusEvent(content, resolveVerb, heldVerb);
+      const completed = Boolean(latest?.complete && statusLineVerb(latest.line) === "done");
       completedScouts.set(task, completed);
       return completed;
     } catch {
@@ -262,14 +350,25 @@ export function scopeForUnreadWake(state: string, heartbeat: boolean): UnreadWak
     const seq = fields[1];
     const kind = fields[2];
     const key = fields[3];
+    let rowMainOwned = false;
     if (kind === "heartbeat") {
-      if (heartbeat) eligibleSeqs.push(seq);
+      // Attended, a heartbeat row is claimed only by a heartbeat review; away,
+      // no main drain will ever take it, so any wake claims it.
+      if (heartbeat || afk) {
+        eligibleSeqs.push(seq);
+        heartbeatSeqs.push(seq);
+      }
       continue;
     }
     if (kind === "check") {
-      // Always main-owned, in every mode: excluded from what the branch may
-      // claim, never a reason to reject the rest of the queue and never a
-      // reason to send an otherwise-eligible heartbeat review to main.
+      // Main-owned while attended: excluded from what the branch may claim,
+      // never a reason to reject the rest of the queue and never a reason to
+      // send an otherwise-eligible heartbeat review to main. Away, the branch
+      // is the only actor, so the row is claimed unscoped.
+      if (afk) {
+        eligibleSeqs.push(seq);
+        checkSeqs.push(seq);
+      }
       continue;
     }
     let project = "";
@@ -277,20 +376,24 @@ export function scopeForUnreadWake(state: string, heartbeat: boolean): UnreadWak
     if (kind === "signal") {
       const payload = fields[4] ?? "";
       if (/^needs-decision:/.test(payload)) {
-        // Main-owned exactly like a check-kind row above: a needs-decision
-        // status append surfaced through the actionable signal path is
-        // excluded from what the branch may claim without vetoing the scan
-        // (docs/pi-supervision-branch.md "Autonomy").
+        // Main-owned exactly like a check-kind row above while attended: a
+        // needs-decision status append surfaced through the actionable signal
+        // path is excluded from what the branch may claim without vetoing the
+        // scan (docs/pi-supervision-branch.md "Autonomy"). Away, the branch
+        // takes the decision row like any other task-local row; the guarded
+        // scripts decide what it may do about it (bin/fm-lease-lib.sh).
         mainOwnedKeys.push(key);
-        continue;
+        rowMainOwned = true;
+        if (!afk) continue;
       }
       task = key.replace(/\.(?:status|turn-ended)$/, "");
       project = metadata.get(task) ?? "";
       const completedScout = isCompletedScout(task);
       if (completedScout === null) return UNSAFE_SCOPE;
       if (project && completedScout) {
-        mainOwnedKeys.push(key);
-        continue;
+        if (!rowMainOwned) mainOwnedKeys.push(key);
+        rowMainOwned = true;
+        if (!afk) continue;
       }
     } else if (kind === "stale") {
       task = taskByKey.get(key) ?? taskByKey.get(key.replace(/^fm-/, "")) ?? "";
@@ -299,7 +402,8 @@ export function scopeForUnreadWake(state: string, heartbeat: boolean): UnreadWak
       if (completedScout === null) return UNSAFE_SCOPE;
       if (project && completedScout) {
         mainOwnedKeys.push(key);
-        continue;
+        rowMainOwned = true;
+        if (!afk) continue;
       }
       if (task) {
         const statusPath = `${state}/${task}.status`;
@@ -336,8 +440,9 @@ export function scopeForUnreadWake(state: string, heartbeat: boolean): UnreadWak
           staleDecisionOwnership.set(statusPath, decisionOwned);
         }
         if (staleDecisionOwnership.get(statusPath)) {
-          mainOwnedKeys.push(key);
-          continue;
+          if (!rowMainOwned) mainOwnedKeys.push(key);
+          rowMainOwned = true;
+          if (!afk) continue;
         }
       }
     } else {
@@ -366,6 +471,8 @@ export function scopeForUnreadWake(state: string, heartbeat: boolean): UnreadWak
     eligibleTasks: [...eligibleTasks],
     corrupted: false,
     mainOwnedKeys,
+    checkSeqs,
+    heartbeatSeqs,
     taskByWakeKey: Object.fromEntries(taskByKey),
   };
 }
@@ -454,6 +561,8 @@ export interface BranchDispatchOffer {
   heartbeat: boolean;
   /** True only when at least one currently unread row is safe for branch handling. */
   eligible: boolean;
+  /** True when routing-time eligibility existed only because of the away collapse. */
+  awayOnly: boolean;
   /** Set by accept(); read by the watcher after emit returns. */
   accepted: boolean;
   settlement: Promise<void>;
@@ -465,12 +574,14 @@ export function createBranchDispatchOffer(
   projects: readonly string[] = [],
   heartbeat = false,
   eligible = false,
+  awayOnly = false,
 ): BranchDispatchOffer {
   const offer: BranchDispatchOffer = {
     message,
     projects: [...projects],
     heartbeat,
     eligible,
+    awayOnly,
     accepted: false,
     settlement: Promise.resolve(),
     accept(settlement = Promise.resolve()) {
