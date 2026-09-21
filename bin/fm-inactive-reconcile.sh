@@ -56,9 +56,10 @@
 # The watcher records each newly classified scout lifecycle span in
 # state/scout-completions/<id>.evidence before it queues that status wake. The
 # record binds the status file's exact spawn boundary and identity to spawn_gen,
-# advances only across a bounded stable byte span, preserves done across
-# decision-only resolved/note events, and records later lifecycle states as the
-# current nonterminal verdict. Reconciliation accepts only a complete, matching
+# advances only across complete newline-terminated events in a bounded stable
+# byte span, preserves done across decision-only resolved/note events, and
+# records later lifecycle states as the current nonterminal verdict.
+# Reconciliation accepts only a complete, matching
 # evidence record whose cursor still equals the current status endpoint. Legacy
 # metadata without the boundary fails closed. The first outcome names guarded
 # cleanup and later scans requeue one
@@ -353,6 +354,17 @@ scout_evidence_path() { # <task>
   printf '%s/%s.evidence\n' "$SCOUT_COMPLETION_DIR" "$1"
 }
 
+scout_completion_dir_trusted() {
+  local owner
+  [ -d "$SCOUT_COMPLETION_DIR" ] && [ ! -L "$SCOUT_COMPLETION_DIR" ] || return 1
+  if [ "$(uname)" = Darwin ]; then
+    owner=$(/usr/bin/stat -f %u "$SCOUT_COMPLETION_DIR" 2>/dev/null) || return 1
+  else
+    owner=$(stat -c %u -- "$SCOUT_COMPLETION_DIR" 2>/dev/null) || return 1
+  fi
+  [ "$owner" = "$(id -u)" ]
+}
+
 SCOUT_EVIDENCE_TASK=
 SCOUT_EVIDENCE_INCARNATION=
 SCOUT_EVIDENCE_STATUS_IDENTITY=
@@ -406,7 +418,7 @@ scout_evidence_parse() { # <record>
 scout_evidence_publish() { # <record> <task> <incarnation> <identity> <boundary> <cursor> <lifecycle> <done-cursor>
   local record=$1 task=$2 incarnation=$3 identity=$4 boundary=$5 cursor=$6 lifecycle=$7 done_cursor=$8 tmp
   mkdir -p "$SCOUT_COMPLETION_DIR" || return 1
-  [ -d "$SCOUT_COMPLETION_DIR" ] && [ ! -L "$SCOUT_COMPLETION_DIR" ] || return 1
+  scout_completion_dir_trusted || return 1
   chmod 700 "$SCOUT_COMPLETION_DIR" 2>/dev/null || return 1
   [ ! -e "$record" ] || { [ -f "$record" ] && [ ! -L "$record" ]; } || return 1
   tmp=$(umask 077; mktemp "$SCOUT_COMPLETION_DIR/.evidence.XXXXXX") || return 1
@@ -430,7 +442,8 @@ scout_evidence_publish() { # <record> <task> <incarnation> <identity> <boundary>
 # an unexpectedly larger gap fails closed and leaves the status wake for MAIN.
 observe_scout_status() { # <status-file> <captured-end> <captured-identity>
   local status=$1 endpoint=$2 identity=$3 id meta lock incarnation boundary meta_identity record
-  local start lifecycle=unknown done_cursor=0 span tmp line verb size after_identity
+  local start lifecycle=unknown done_cursor=0 span tmp prev_tmp line verb size after_identity
+  local evidence_current=0 discard_first=0 processed_cursor line_bytes
   case "$endpoint" in ''|*[!0-9]*) return 1 ;; esac
   id=$(basename "$status"); id=${id%.status}
   valid_id "$id" || return 1
@@ -463,6 +476,8 @@ observe_scout_status() { # <status-file> <captured-end> <captured-identity>
   record=$(scout_evidence_path "$id")
   start=$boundary
   if [ -e "$record" ] || [ -L "$record" ]; then
+    scout_completion_dir_trusted \
+      || { fm_lock_release "$lock"; return 1; }
     scout_evidence_parse "$record" \
       || { fm_lock_release "$lock"; return 1; }
     [ "$SCOUT_EVIDENCE_TASK" = "$id" ] \
@@ -475,6 +490,7 @@ observe_scout_status() { # <status-file> <captured-end> <captured-identity>
       start=$SCOUT_EVIDENCE_CURSOR
       lifecycle=$SCOUT_EVIDENCE_LIFECYCLE
       done_cursor=$SCOUT_EVIDENCE_DONE_CURSOR
+      evidence_current=1
     fi
   fi
   span=$((endpoint - start))
@@ -488,23 +504,40 @@ observe_scout_status() { # <status-file> <captured-end> <captured-identity>
   fi
   if [ "$span" -gt 0 ]; then
     mkdir -p "$SCOUT_COMPLETION_DIR" || { fm_lock_release "$lock"; return 1; }
-    [ -d "$SCOUT_COMPLETION_DIR" ] && [ ! -L "$SCOUT_COMPLETION_DIR" ] \
-      || { fm_lock_release "$lock"; return 1; }
+    scout_completion_dir_trusted || { fm_lock_release "$lock"; return 1; }
     chmod 700 "$SCOUT_COMPLETION_DIR" 2>/dev/null \
       || { fm_lock_release "$lock"; return 1; }
+    if [ "$evidence_current" -eq 0 ] && [ "$boundary" -gt 0 ]; then
+      prev_tmp=$(umask 077; mktemp "$SCOUT_COMPLETION_DIR/.previous-byte.XXXXXX") \
+        || { fm_lock_release "$lock"; return 1; }
+      _fm_status_read_span "$status" "$((boundary - 1))" 1 > "$prev_tmp" 2>/dev/null \
+        || { rm -f "$prev_tmp"; fm_lock_release "$lock"; return 1; }
+      if ! IFS= read -r line < "$prev_tmp"; then
+        discard_first=1
+      fi
+      rm -f "$prev_tmp"
+    fi
     tmp=$(umask 077; mktemp "$SCOUT_COMPLETION_DIR/.span.XXXXXX") \
       || { fm_lock_release "$lock"; return 1; }
     _fm_status_read_span "$status" "$start" "$span" > "$tmp" 2>/dev/null \
       || { rm -f "$tmp"; fm_lock_release "$lock"; return 1; }
-    while IFS= read -r line || [ -n "$line" ]; do
+    processed_cursor=$start
+    while IFS= read -r line; do
+      line_bytes=${#line}
+      processed_cursor=$((processed_cursor + line_bytes + 1))
+      if [ "$discard_first" -eq 1 ]; then
+        discard_first=0
+        continue
+      fi
       verb=$(status_line_verb "$line")
       case "$verb" in
-        done) lifecycle='done'; done_cursor=$endpoint ;;
+        done) lifecycle='done'; done_cursor=$processed_cursor ;;
         working|paused|blocked|needs-decision|failed|captain-held) lifecycle=$verb ;;
         resolved|note|'') ;;
       esac
     done < "$tmp"
     rm -f "$tmp"
+    start=$processed_cursor
   fi
   size=$(_fm_status_file_size "$status" 2>/dev/null) || size=''
   size=${size//[[:space:]]/}
@@ -514,9 +547,11 @@ observe_scout_status() { # <status-file> <captured-end> <captured-identity>
     && [ "$(meta_field "$meta" status_boundary)" = "$boundary" ] \
     && [ "$(meta_field "$meta" status_identity)" = "$meta_identity" ] \
     || { fm_lock_release "$lock"; return 1; }
-  scout_evidence_publish "$record" "$id" "$incarnation" "$identity" \
-    "$boundary" "$endpoint" "$lifecycle" "$done_cursor" \
-    || { fm_lock_release "$lock"; return 1; }
+  if [ "$evidence_current" -eq 1 ] || [ "$start" -gt "$boundary" ]; then
+    scout_evidence_publish "$record" "$id" "$incarnation" "$identity" \
+      "$boundary" "$start" "$lifecycle" "$done_cursor" \
+      || { fm_lock_release "$lock"; return 1; }
+  fi
   fm_lock_release "$lock"
 }
 
@@ -527,6 +562,7 @@ scout_evidence_current_done() { # <task> <meta> <status>
   local task=$1 meta=$2 status=$3 record incarnation boundary meta_identity size identity
   record=$(scout_evidence_path "$task")
   if [ ! -e "$record" ] && [ ! -L "$record" ]; then return 1; fi
+  scout_completion_dir_trusted || return 2
   scout_evidence_parse "$record" || return 2
   incarnation=$(meta_field "$meta" spawn_gen)
   boundary=$(meta_field "$meta" status_boundary)

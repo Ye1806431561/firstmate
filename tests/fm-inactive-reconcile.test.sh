@@ -460,6 +460,108 @@ test_current_done_scout_then_working_is_not_cleanup_actionable() {
   pass "later current-incarnation working state suppresses scout cleanup"
 }
 
+# The watcher may observe a status append between any two bytes. Only complete
+# newline-terminated events may advance lifecycle evidence, and the unconsumed
+# suffix must be replayed when its terminating newline arrives.
+test_split_scout_lifecycle_lines_match_whole_events() {
+  local split prefix suffix meta evidence case_name
+  for split in 1 2 5; do
+    make_world "split-done-$split"
+    write_child "$MAIN" lookout 'working: prior incarnation boundary' "scout-split-done.$split"
+    meta="$MAIN/state/lookout.meta"
+    make_scout "$meta"
+    set_status_boundary "$MAIN" lookout
+    mkdir -p "$MAIN/data/lookout" "$MAIN/projects/lookout"
+    printf '# Complete report\n' > "$MAIN/data/lookout/report.md"
+    prime_seen "$MAIN/state" "$MAIN/state/lookout.status"
+    set_real_busy_state "$MAIN" lookout idle
+    prefix=$(printf '%s' 'done: current report ready' | cut -c1-"$split")
+    suffix=$(printf '%s' 'done: current report ready' | cut -c$((split + 1))-)
+    printf '%s' "$prefix" >> "$MAIN/state/lookout.status"
+    run_watcher_for_status "$MAIN" lookout
+    ack_wakes "$MAIN" || fail "split done prefix $split could not be acknowledged"
+    age "$meta" "$MAIN/state/lookout.status"
+    run_real_reconcile "$MAIN" --startup
+    [ "$(wake_count "$MAIN" 'scout-cleanup:')" = 0 ] \
+      || fail "unterminated done prefix $split became completion proof"
+
+    printf '%s\n' "$suffix" >> "$MAIN/state/lookout.status"
+    run_watcher_for_status "$MAIN" lookout
+    ack_wakes "$MAIN" || fail "completed split done $split could not be acknowledged"
+    age "$meta" "$MAIN/state/lookout.status"
+    run_real_reconcile "$MAIN" --startup
+    [ "$(wake_count "$MAIN" 'inactive-outcome:')" = 1 ] \
+      || fail "split done at byte $split did not match an unsplit completion"
+  done
+
+  for split in 1 3 8; do
+    case_name="split-working-$split"
+    make_world "$case_name"
+    write_child "$MAIN" lookout 'working: prior incarnation boundary' "scout-split-working.$split"
+    meta="$MAIN/state/lookout.meta"
+    make_scout "$meta"
+    set_status_boundary "$MAIN" lookout
+    mkdir -p "$MAIN/data/lookout" "$MAIN/projects/lookout"
+    printf '# Complete report\n' > "$MAIN/data/lookout/report.md"
+    prime_seen "$MAIN/state" "$MAIN/state/lookout.status"
+    set_real_busy_state "$MAIN" lookout idle
+    printf 'done: current report ready\n' >> "$MAIN/state/lookout.status"
+    run_watcher_for_status "$MAIN" lookout
+    ack_wakes "$MAIN" || fail "split working setup done could not be acknowledged"
+    prefix=$(printf '%s' 'working: new work' | cut -c1-"$split")
+    suffix=$(printf '%s' 'working: new work' | cut -c$((split + 1))-)
+    printf '%s' "$prefix" >> "$MAIN/state/lookout.status"
+    run_watcher_for_status "$MAIN" lookout
+    ack_wakes "$MAIN" || fail "split working prefix $split could not be acknowledged"
+    printf '%s\nresolved [key=r]: closed\n' "$suffix" >> "$MAIN/state/lookout.status"
+    run_watcher_for_status "$MAIN" lookout
+    ack_wakes "$MAIN" || fail "completed split working $split could not be acknowledged"
+    evidence="$MAIN/state/scout-completions/lookout.evidence"
+    assert_grep 'lifecycle=working' "$evidence" \
+      "split working at byte $split did not match an unsplit transition"
+    age "$meta" "$MAIN/state/lookout.status"
+    run_real_reconcile "$MAIN" --startup
+    [ "$(wake_count "$MAIN" 'scout-cleanup:')" = 0 ] \
+      || fail "split working at byte $split retained stale completion"
+  done
+  pass "split scout lifecycle lines match whole newline-terminated events"
+}
+
+# A replacement starts at an exact byte boundary, which may bisect an old
+# unterminated event. Its continuation is discarded, while later whole events
+# from the replacement remain observable.
+test_relaunch_boundary_discards_predecessor_partial_line() {
+  local meta status
+  make_world relaunch-partial-line
+  write_child "$MAIN" lookout 'working: placeholder' 'scout-relaunch-partial.2'
+  meta="$MAIN/state/lookout.meta"
+  make_scout "$meta"
+  status="$MAIN/state/lookout.status"
+  printf 'done: predecessor partial' > "$status"
+  set_status_boundary "$MAIN" lookout
+  mkdir -p "$MAIN/data/lookout" "$MAIN/projects/lookout"
+  printf '# Complete report\n' > "$MAIN/data/lookout/report.md"
+  prime_seen "$MAIN/state" "$status"
+  set_real_busy_state "$MAIN" lookout idle
+
+  printf ' continuation\n' >> "$status"
+  run_watcher_for_status "$MAIN" lookout
+  ack_wakes "$MAIN" || fail "predecessor continuation could not be acknowledged"
+  age "$meta" "$status"
+  run_real_reconcile "$MAIN" --startup
+  [ "$(wake_count "$MAIN" 'scout-cleanup:')" = 0 ] \
+    || fail "predecessor partial line was attributed to the replacement"
+
+  printf 'done: replacement report ready\n' >> "$status"
+  run_watcher_for_status "$MAIN" lookout
+  ack_wakes "$MAIN" || fail "replacement completion could not be acknowledged"
+  age "$meta" "$status"
+  run_real_reconcile "$MAIN" --startup
+  [ "$(wake_count "$MAIN" 'inactive-outcome:')" = 1 ] \
+    || fail "replacement completion after discarded predecessor was lost"
+  pass "relaunch boundaries discard predecessor partial lines"
+}
+
 # Relaunch metadata changes invalidate rather than rewrite prior evidence.
 test_matching_scout_evidence_is_ignored_after_spawn_changes() {
   local meta status size ident
@@ -538,6 +640,23 @@ test_missing_legacy_and_unsafe_scout_evidence_fail_closed() {
       [ "$(cat "$target")" = 'preserve target' ] || fail "symlink evidence changed its target"
     fi
   done
+
+  make_world unsafe-evidence-parent-symlink
+  write_child "$MAIN" lookout 'done: current report ready' 'scout-parent-symlink.1'
+  meta="$MAIN/state/lookout.meta"
+  make_scout "$meta"
+  prove_existing_scout_done "$MAIN" lookout
+  set_real_busy_state "$MAIN" lookout idle
+  mv "$MAIN/state/scout-completions" "$WORLD/external-evidence"
+  ln -s "$WORLD/external-evidence" "$MAIN/state/scout-completions"
+  age "$meta" "$MAIN/state/lookout.status"
+  run_real_reconcile "$MAIN" --startup
+  [ "$(wake_count "$MAIN" 'scout-cleanup:')" = 0 ] \
+    || fail "symlinked evidence parent minted cleanup"
+  [ "$(wake_count "$MAIN" 'inactive-reconcile-diagnostic:scout-completion:lookout')" = 1 ] \
+    || fail "symlinked evidence parent did not surface a safe diagnostic"
+  assert_grep 'task_id=lookout' "$WORLD/external-evidence/lookout.evidence" \
+    "symlinked evidence parent altered its external target"
   pass "missing legacy and unsafe scout evidence fail closed"
 }
 
@@ -1286,6 +1405,8 @@ test_historical_scout_done_does_not_clean_busy_replacement
 test_current_secondmate_scout_done_gets_local_cleanup
 test_current_done_scout_with_trailing_resolved_gets_cleanup
 test_current_done_scout_then_working_is_not_cleanup_actionable
+test_split_scout_lifecycle_lines_match_whole_events
+test_relaunch_boundary_discards_predecessor_partial_line
 test_matching_scout_evidence_is_ignored_after_spawn_changes
 test_missing_legacy_and_unsafe_scout_evidence_fail_closed
 test_local_secondmate_delivers_terminal_ledger_line
