@@ -115,11 +115,34 @@ run_report() { # <home> <child>
 }
 
 wake_count() { # <home> <key prefix>
-  grep -c "$2" "$1/state/.wake-queue" 2>/dev/null || true
+  if [ -f "$1/state/.wake-queue" ]; then
+    grep -c "$2" "$1/state/.wake-queue" 2>/dev/null || true
+  else
+    printf '0\n'
+  fi
 }
 
 outcome_count() { # <home> <suffix>
   find "$1/state/terminal-outcomes" -type f -name "*.$2" 2>/dev/null | wc -l | tr -d ' '
+}
+
+ack_wakes() { # <home>
+  local home=$1 err seq generation
+  err="$WORLD/drain-ack.err"
+  FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" "$DRAIN" >/dev/null 2> "$err" \
+    || return 1
+  seq=$(sed -n 's/^WAKE_ACK_REQUIRED:.*--ack-through \([0-9][0-9]*\) --recovery-generation .*/\1/p' "$err")
+  generation=$(sed -n 's/^WAKE_ACK_REQUIRED:.*--recovery-generation \([A-Za-z0-9._-][A-Za-z0-9._-]*\)$/\1/p' "$err")
+  [ -n "$seq" ] && [ -n "$generation" ] || return 1
+  FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    "$DRAIN" --ack-through "$seq" --recovery-generation "$generation"
+}
+
+make_scout() { # <meta>
+  local meta=$1
+  sed 's/^kind=ship$/kind=scout/' "$meta" > "$meta.tmp"
+  mv "$meta.tmp" "$meta"
+  age "$meta"
 }
 
 reported_outcome_key() { # <home> <id> <state>
@@ -148,20 +171,136 @@ reap() { kill "$1" 2>/dev/null || true; wait "$1" 2>/dev/null || true; }
 # The main retains a terminal presentation receipt until the corresponding wake
 # is handled and acknowledged.
 test_main_direct_terminal_presentation_receipt() {
-  local err seq generation
   make_world main-direct; write_child "$MAIN" child 'done: PR https://example.test/owner/repo/pull/1 checks green'
   FM_FAKE_CREW_STATE='done' run_reconcile "$MAIN" --startup
   [ "$(wake_count "$MAIN" 'inactive-outcome:')" = 1 ] || fail "main did not queue terminal presentation"
   [ "$(outcome_count "$MAIN" pending)" = 1 ] || fail "main did not retain presentation receipt"
 
-  err="$WORLD/drain.err"
-  FM_HOME="$MAIN" FM_STATE_OVERRIDE="$MAIN/state" "$DRAIN" >/dev/null 2> "$err"
-  seq=$(sed -n 's/^WAKE_ACK_REQUIRED:.*--ack-through \([0-9][0-9]*\) --recovery-generation .*/\1/p' "$err")
-  generation=$(sed -n 's/^WAKE_ACK_REQUIRED:.*--recovery-generation \([A-Za-z0-9._-][A-Za-z0-9._-]*\)$/\1/p' "$err")
-  [ -n "$seq" ] && [ -n "$generation" ] || fail "main presentation did not require durable acknowledgement"
-  FM_HOME="$MAIN" FM_STATE_OVERRIDE="$MAIN/state" "$DRAIN" --ack-through "$seq" --recovery-generation "$generation"
+  ack_wakes "$MAIN" || fail "main presentation did not require durable acknowledgement"
   [ "$(outcome_count "$MAIN" presented)" = 1 ] || fail "acknowledged presentation did not receive its own receipt"
   pass "main direct terminal presentation has a durable receipt"
+}
+
+# A current-state-proven completed scout stays actionable through a repeated
+# main-owned check until guarded teardown removes its metadata.
+test_completed_scout_cleanup_repeats_until_metadata_retires() {
+  local meta
+  make_world completed-scout
+  write_child "$MAIN" lookout 'done: full report ready' 'scout-current.1'
+  meta="$MAIN/state/lookout.meta"
+  make_scout "$meta"
+  mkdir -p "$MAIN/data/lookout"
+  printf '# Complete report\n' > "$MAIN/data/lookout/report.md"
+
+  FM_FAKE_CREW_STATE='done' run_reconcile "$MAIN" --startup
+  [ "$(wake_count "$MAIN" 'inactive-outcome:')" = 1 ] \
+    || fail "current completed scout did not queue its first cleanup check"
+  assert_grep 'completed scout still has live task records and needs guarded cleanup: child=lookout report=data/lookout/report.md' \
+    "$MAIN/state/.wake-queue" "completed scout cleanup check did not name its valid report"
+  assert_grep 'MAIN must complete the captain-call inventory, then run bin/fm-teardown.sh lookout, which must pass every cleanup safety check' \
+    "$MAIN/state/.wake-queue" "completed scout cleanup check weakened guarded teardown"
+  ack_wakes "$MAIN" || fail "completed scout cleanup check could not be acknowledged"
+
+  FM_FAKE_CREW_STATE='done' run_reconcile "$MAIN" --startup
+  [ "$(wake_count "$MAIN" 'scout-cleanup:')" = 1 ] \
+    || fail "acknowledged scout cleanup check was not re-enqueued"
+  ack_wakes "$MAIN" || fail "repeated scout cleanup check could not be acknowledged"
+  rm -f "$meta"
+  FM_FAKE_CREW_STATE='done' run_reconcile "$MAIN" --startup
+  [ "$(wake_count "$MAIN" 'scout-cleanup:')" = 0 ] \
+    || fail "retired scout metadata left another cleanup check"
+  [ ! -s "$WORLD/forge.log" ] || fail "scout cleanup reconciliation invoked a forge command"
+  pass "completed scout cleanup checks repeat until metadata retires"
+}
+
+# Invalid report shapes remain visible on every reconciliation pass, but the
+# scanner only asks for guarded teardown and never performs cleanup itself.
+test_completed_scout_invalid_reports_repeat_without_cleanup() {
+  local shape meta report
+  for shape in missing symlink directory unreadable; do
+    make_world "scout-report-$shape"
+    write_child "$MAIN" lookout 'done: report claimed ready' "scout-$shape.1"
+    meta="$MAIN/state/lookout.meta"
+    make_scout "$meta"
+    report="$MAIN/data/lookout/report.md"
+    mkdir -p "$(dirname "$report")"
+    case "$shape" in
+      missing) ;;
+      symlink) printf '# target\n' > "$WORLD/report-target"; ln -s "$WORLD/report-target" "$report" ;;
+      directory) mkdir "$report" ;;
+      unreadable) printf '# private\n' > "$report"; chmod 000 "$report" ;;
+    esac
+
+    FM_FAKE_CREW_STATE='done' run_reconcile "$MAIN" --startup
+    assert_grep 'report=missing-or-unreadable' "$MAIN/state/.wake-queue" \
+      "$shape scout report was not surfaced as an integrity problem"
+    ack_wakes "$MAIN" || fail "$shape report integrity check could not be acknowledged"
+    FM_FAKE_CREW_STATE='done' run_reconcile "$MAIN" --startup
+    [ "$(wake_count "$MAIN" 'scout-cleanup:')" = 1 ] \
+      || fail "$shape report integrity check did not repeat"
+    [ -f "$meta" ] || fail "$shape report reconciliation removed live task metadata"
+    [ ! -s "$WORLD/forge.log" ] || fail "$shape report reconciliation invoked a forge command"
+    chmod 600 "$report" 2>/dev/null || true
+  done
+  pass "invalid scout reports repeat without force cleanup"
+}
+
+# A terminal ledger line is not current-state truth for a relaunched scout.
+# The ordinary ship ledger fast path remains unchanged, while a scout is
+# checked through fm-crew-state before any local cleanup reminder is queued.
+test_historical_scout_done_does_not_clean_active_replacement() {
+  local meta
+  make_world active-replacement; bind_secondmate local
+  write_child "$MATE" lookout 'done: prior incarnation report' 'scout-replacement.2'
+  meta="$MATE/state/lookout.meta"
+  make_scout "$meta"
+  mkdir -p "$MATE/data/lookout"
+  printf '# Old report\n' > "$MATE/data/lookout/report.md"
+
+  FM_FAKE_CREW_STATE='working' run_reconcile "$MATE" --startup
+  [ "$(wake_count "$MATE" 'scout-cleanup:')" = 0 ] \
+    || fail "historical done queued cleanup for an active replacement scout: $(cat "$MATE/state/.wake-queue" 2>/dev/null)"
+  [ -f "$meta" ] || fail "active replacement scout metadata was removed"
+  grep -Fq 'child lookout done: prior incarnation report' "$MAIN/state/mate.status" \
+    || fail "scout current-state verification regressed ledger-first parent delivery"
+  pass "historical scout done does not clean an active replacement"
+}
+
+# The secondmate ledger still delivers the normal parent outcome first, but a
+# current done verdict also leaves the owning home a repeated cleanup check.
+test_current_secondmate_scout_done_gets_local_cleanup() {
+  local meta
+  make_world current-mate-scout; bind_secondmate local
+  write_child "$MATE" lookout 'done: current report ready' 'scout-current-mate.1'
+  meta="$MATE/state/lookout.meta"
+  make_scout "$meta"
+  mkdir -p "$MATE/data/lookout"
+  printf '# Complete report\n' > "$MATE/data/lookout/report.md"
+
+  FM_FAKE_CREW_STATE='done' run_reconcile "$MATE" --startup
+  grep -Fq 'child lookout done: current report ready' "$MAIN/state/mate.status" \
+    || fail "current completed scout lost its normal parent outcome"
+  [ "$(wake_count "$MATE" 'scout-cleanup:')" = 1 ] \
+    || fail "current completed scout did not queue local guarded cleanup"
+  assert_grep 'report=data/lookout/report.md' "$MATE/state/.wake-queue" \
+    "current completed scout cleanup lost its report pointer"
+  pass "current secondmate scout completion reports upward and queues local cleanup"
+}
+
+# Decision closure is a later event, not a replacement current run state.
+test_current_done_scout_with_trailing_resolved_gets_cleanup() {
+  local meta
+  make_world resolved-after-done
+  write_child "$MAIN" lookout $'done: report ready\nresolved [key=review]: answered' 'scout-resolved.1'
+  meta="$MAIN/state/lookout.meta"
+  make_scout "$meta"
+  mkdir -p "$MAIN/data/lookout"
+  printf '# Complete report\n' > "$MAIN/data/lookout/report.md"
+
+  FM_FAKE_CREW_STATE='done' run_reconcile "$MAIN" --startup
+  assert_grep 'completed scout still has live task records and needs guarded cleanup: child=lookout' \
+    "$MAIN/state/.wake-queue" "trailing resolved event hid current scout completion"
+  pass "current done scout remains cleanup-actionable after a resolved event"
 }
 
 # A secondmate delivers a child's terminal ledger line to the parent on the
@@ -902,6 +1041,11 @@ SH
 }
 
 test_main_direct_terminal_presentation_receipt
+test_completed_scout_cleanup_repeats_until_metadata_retires
+test_completed_scout_invalid_reports_repeat_without_cleanup
+test_historical_scout_done_does_not_clean_active_replacement
+test_current_secondmate_scout_done_gets_local_cleanup
+test_current_done_scout_with_trailing_resolved_gets_cleanup
 test_local_secondmate_delivers_terminal_ledger_line
 test_secondmate_multiline_terminal_outcome_is_delivered_once
 test_secondmate_unterminated_prose_reports_run_outcome
