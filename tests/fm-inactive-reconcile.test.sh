@@ -26,6 +26,14 @@ age() { # <path>...
   for path in "$@"; do set_mtime "$now" "$path"; done
 }
 
+file_mode() { # <path>
+  if [ "$(uname)" = Darwin ]; then
+    stat -f %Lp "$1"
+  else
+    stat -c %a "$1"
+  fi
+}
+
 make_tools() { # <world>
   local world=$1 fake
   fake="$world/fakebin"
@@ -104,6 +112,14 @@ run_reconcile() { # <home> [--startup]
     FM_FORGE_LOG="$WORLD/forge.log" "$RECON" scan ${option:+"$option"}
 }
 
+run_real_reconcile() { # <home> [--startup]
+  local home=$1 option=${2:-}
+  PATH="$WORLD/fakebin:$PATH" FM_ROOT_OVERRIDE="$WORLD/root" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" \
+    FM_INACTIVE_RECONCILE_SECS=60 FM_FORGE_LOG="$WORLD/forge.log" \
+    env -u FM_INACTIVE_CREW_STATE_BIN "$RECON" scan ${option:+"$option"}
+}
+
 # The teardown-side entry point: deliver one child's terminal ledger line for a
 # caller holding its meta lock.
 run_report() { # <home> <child>
@@ -143,6 +159,63 @@ make_scout() { # <meta>
   sed 's/^kind=ship$/kind=scout/' "$meta" > "$meta.tmp"
   mv "$meta.tmp" "$meta"
   age "$meta"
+}
+
+set_status_boundary() { # <home> <id>
+  local home=$1 id=$2 status size ident
+  status="$home/state/$id.status"
+  size=$(LC_ALL=C wc -c < "$status" | tr -d ' ')
+  ident=$(bash -c '. "$1"; _fm_open_decisions_file_ident "$2"' \
+    _ "$ROOT/bin/fm-classify-lib.sh" "$status") || fail "could not identify status boundary"
+  printf 'status_boundary=%s\nstatus_identity=%s\n' "$size" "$ident" >> "$home/state/$id.meta"
+}
+
+observe_scout_status() { # <home> <id>
+  local home=$1 id=$2 status size ident
+  status="$home/state/$id.status"
+  size=$(LC_ALL=C wc -c < "$status" | tr -d ' ')
+  ident=$(bash -c '. "$1"; _fm_open_decisions_file_ident "$2"' \
+    _ "$ROOT/bin/fm-classify-lib.sh" "$status") || fail "could not identify observed status"
+  FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    "$RECON" observe-status "$status" "$size" "$ident" \
+    || fail "could not observe current scout status for $id"
+}
+
+prove_existing_scout_done() { # <home> <id>
+  local home=$1 id=$2
+  printf 'status_boundary=0\nstatus_identity=absent\n' >> "$home/state/$id.meta"
+  observe_scout_status "$home" "$id"
+  age "$home/state/$id.meta" "$home/state/$id.status"
+}
+
+set_real_busy_state() { # <home> <id> <idle|busy>
+  local home=$1 id=$2 state=$3 gen event
+  gen=$(FM_HOME="$home" "$ROOT/bin/fm-busy-event.sh" arm "$home/state" "$id") \
+    || fail "could not arm real busy state for $id"
+  if [ "$state" = idle ]; then event=stop; else event=user-prompt-submit; fi
+  FM_HOME="$home" "$ROOT/bin/fm-busy-event.sh" apply "$home/state" "$id" "$state" \
+    --gen "$gen" --source claude-hook --event "$event" \
+    || fail "could not publish real $state state for $id"
+}
+
+run_watcher_for_status() { # <home> <id>
+  local home=$1 id=$2 pid i
+  PATH="$WORLD/fakebin:$PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" \
+    FM_INACTIVE_RECONCILE_SECS=60 FM_FORGE_LOG="$WORLD/forge.log" \
+    FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+    env -u FM_INACTIVE_CREW_STATE_BIN "$WATCH" > "$WORLD/status-watch.out" 2>&1 &
+  pid=$!
+  i=0
+  while [ "$i" -lt 60 ] && kill -0 "$pid" 2>/dev/null; do
+    sleep 0.1
+    i=$((i + 1))
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    reap "$pid"
+    fail "watcher did not surface the status event for $id: $(cat "$WORLD/status-watch.out")"
+  fi
+  wait "$pid" 2>/dev/null || true
 }
 
 reported_outcome_key() { # <home> <id> <state>
@@ -189,6 +262,7 @@ test_completed_scout_cleanup_repeats_until_metadata_retires() {
   write_child "$MAIN" lookout 'done: full report ready' 'scout-current.1'
   meta="$MAIN/state/lookout.meta"
   make_scout "$meta"
+  prove_existing_scout_done "$MAIN" lookout
   mkdir -p "$MAIN/data/lookout"
   printf '# Complete report\n' > "$MAIN/data/lookout/report.md"
 
@@ -222,6 +296,7 @@ test_completed_scout_invalid_reports_repeat_without_cleanup() {
     write_child "$MAIN" lookout 'done: report claimed ready' "scout-$shape.1"
     meta="$MAIN/state/lookout.meta"
     make_scout "$meta"
+    prove_existing_scout_done "$MAIN" lookout
     report="$MAIN/data/lookout/report.md"
     mkdir -p "$(dirname "$report")"
     case "$shape" in
@@ -245,25 +320,58 @@ test_completed_scout_invalid_reports_repeat_without_cleanup() {
   pass "invalid scout reports repeat without force cleanup"
 }
 
-# A terminal ledger line is not current-state truth for a relaunched scout.
-# The ordinary ship ledger fast path remains unchanged, while a scout is
-# checked through fm-crew-state before any local cleanup reminder is queued.
+# A historical done is before the replacement's exact status boundary. The real
+# state provider may still fall back to it while the replacement is idle, but no
+# current-incarnation completion evidence or cleanup reminder may be created.
 test_historical_scout_done_does_not_clean_active_replacement() {
-  local meta
-  make_world active-replacement; bind_secondmate local
-  write_child "$MATE" lookout 'done: prior incarnation report' 'scout-replacement.2'
-  meta="$MATE/state/lookout.meta"
+  local meta state_out
+  make_world active-replacement
+  write_child "$MAIN" lookout 'done: prior incarnation report' 'scout-replacement.2'
+  meta="$MAIN/state/lookout.meta"
   make_scout "$meta"
-  mkdir -p "$MATE/data/lookout"
-  printf '# Old report\n' > "$MATE/data/lookout/report.md"
+  sed 's/^harness=codex$/harness=claude/' "$meta" > "$meta.tmp" && mv "$meta.tmp" "$meta"
+  set_status_boundary "$MAIN" lookout
+  mkdir -p "$MAIN/data/lookout"
+  mkdir -p "$MAIN/projects/lookout"
+  printf '# Old report\n' > "$MAIN/data/lookout/report.md"
+  set_real_busy_state "$MAIN" lookout idle
 
-  FM_FAKE_CREW_STATE='working' run_reconcile "$MATE" --startup
-  [ "$(wake_count "$MATE" 'scout-cleanup:')" = 0 ] \
-    || fail "historical done queued cleanup for an active replacement scout: $(cat "$MATE/state/.wake-queue" 2>/dev/null)"
+  age "$meta" "$MAIN/state/lookout.status"
+  state_out=$(PATH="$WORLD/fakebin:$PATH" FM_HOME="$MAIN" FM_STATE_OVERRIDE="$MAIN/state" \
+    "$ROOT/bin/fm-crew-state.sh" lookout)
+  case "$state_out" in 'state: done '*) ;; *) fail "idle replacement did not reproduce historical done fallback: $state_out" ;; esac
+  run_real_reconcile "$MAIN" --startup
+  [ "$(wake_count "$MAIN" 'scout-cleanup:')" = 0 ] \
+    || fail "historical done queued cleanup for an idle replacement scout: $(cat "$MAIN/state/.wake-queue" 2>/dev/null)"
+  [ "$(wake_count "$MAIN" 'inactive-outcome:')" = 0 ] \
+    || fail "historical done minted a current replacement outcome"
   [ -f "$meta" ] || fail "active replacement scout metadata was removed"
-  grep -Fq 'child lookout done: prior incarnation report' "$MAIN/state/mate.status" \
-    || fail "scout current-state verification regressed ledger-first parent delivery"
-  pass "historical scout done does not clean an active replacement"
+  [ ! -e "$MAIN/state/scout-completions/lookout.evidence" ] \
+    || fail "historical done minted current-incarnation completion evidence"
+  pass "historical scout done does not clean an idle replacement"
+}
+
+test_historical_scout_done_does_not_clean_busy_replacement() {
+  local meta state_out
+  make_world busy-replacement
+  write_child "$MAIN" lookout 'done: prior incarnation report' 'scout-replacement.3'
+  meta="$MAIN/state/lookout.meta"
+  make_scout "$meta"
+  sed 's/^harness=codex$/harness=claude/' "$meta" > "$meta.tmp" && mv "$meta.tmp" "$meta"
+  set_status_boundary "$MAIN" lookout
+  mkdir -p "$MAIN/projects/lookout"
+  set_real_busy_state "$MAIN" lookout busy
+  age "$meta" "$MAIN/state/lookout.status"
+
+  state_out=$(PATH="$WORLD/fakebin:$PATH" FM_HOME="$MAIN" FM_STATE_OVERRIDE="$MAIN/state" \
+    "$ROOT/bin/fm-crew-state.sh" lookout)
+  case "$state_out" in 'state: working '*) ;; *) fail "busy replacement control was not working: $state_out" ;; esac
+  run_real_reconcile "$MAIN" --startup
+  [ "$(wake_count "$MAIN" 'scout-cleanup:')" = 0 ] \
+    || fail "historical done queued cleanup for a busy replacement scout"
+  [ ! -e "$MAIN/state/scout-completions/lookout.evidence" ] \
+    || fail "busy replacement minted completion evidence without a new status event"
+  pass "historical scout done does not clean a busy replacement"
 }
 
 # The secondmate ledger still delivers the normal parent outcome first, but a
@@ -274,6 +382,7 @@ test_current_secondmate_scout_done_gets_local_cleanup() {
   write_child "$MATE" lookout 'done: current report ready' 'scout-current-mate.1'
   meta="$MATE/state/lookout.meta"
   make_scout "$meta"
+  prove_existing_scout_done "$MATE" lookout
   mkdir -p "$MATE/data/lookout"
   printf '# Complete report\n' > "$MATE/data/lookout/report.md"
 
@@ -291,16 +400,145 @@ test_current_secondmate_scout_done_gets_local_cleanup() {
 test_current_done_scout_with_trailing_resolved_gets_cleanup() {
   local meta
   make_world resolved-after-done
-  write_child "$MAIN" lookout $'done: report ready\nresolved [key=review]: answered' 'scout-resolved.1'
+  write_child "$MAIN" lookout 'working: prior incarnation boundary' 'scout-resolved.1'
   meta="$MAIN/state/lookout.meta"
   make_scout "$meta"
+  set_status_boundary "$MAIN" lookout
   mkdir -p "$MAIN/data/lookout"
   printf '# Complete report\n' > "$MAIN/data/lookout/report.md"
+  prime_seen "$MAIN/state" "$MAIN/state/lookout.status"
+  set_real_busy_state "$MAIN" lookout idle
 
-  FM_FAKE_CREW_STATE='done' run_reconcile "$MAIN" --startup
+  printf 'done: report ready\n' >> "$MAIN/state/lookout.status"
+  run_watcher_for_status "$MAIN" lookout
+  [ "$(file_mode "$MAIN/state/scout-completions/lookout.evidence")" = 600 ] \
+    || fail "watcher completion evidence is not private"
+  assert_grep 'incarnation=scout-resolved.1' "$MAIN/state/scout-completions/lookout.evidence" \
+    "watcher completion evidence lost the exact incarnation"
+  age "$meta" "$MAIN/state/lookout.status"
+  run_real_reconcile "$MAIN" --startup
   assert_grep 'completed scout still has live task records and needs guarded cleanup: child=lookout' \
-    "$MAIN/state/.wake-queue" "trailing resolved event hid current scout completion"
-  pass "current done scout remains cleanup-actionable after a resolved event"
+    "$MAIN/state/.wake-queue" "real watcher evidence did not make current scout completion actionable"
+  ack_wakes "$MAIN" || fail "current scout cleanup presentation could not be acknowledged"
+
+  printf 'resolved [key=review]: answered\n' >> "$MAIN/state/lookout.status"
+  run_watcher_for_status "$MAIN" lookout
+  ack_wakes "$MAIN" || fail "resolved signal could not be acknowledged"
+  age "$meta" "$MAIN/state/lookout.status"
+  run_real_reconcile "$MAIN" --startup
+  [ "$(wake_count "$MAIN" 'scout-cleanup:')" = 1 ] \
+    || fail "trailing resolved event hid current scout completion after acknowledgement"
+  pass "real watcher evidence preserves current scout completion after a resolved event"
+}
+
+# A later current-incarnation lifecycle transition supersedes completion. The
+# watcher must advance evidence through that transition before reconciliation.
+test_current_done_scout_then_working_is_not_cleanup_actionable() {
+  local meta
+  make_world done-then-working
+  write_child "$MAIN" lookout 'working: prior incarnation boundary' 'scout-working.1'
+  meta="$MAIN/state/lookout.meta"
+  make_scout "$meta"
+  set_status_boundary "$MAIN" lookout
+  mkdir -p "$MAIN/data/lookout"
+  printf '# Complete report\n' > "$MAIN/data/lookout/report.md"
+  prime_seen "$MAIN/state" "$MAIN/state/lookout.status"
+  set_real_busy_state "$MAIN" lookout idle
+
+  printf 'done: report ready\n' >> "$MAIN/state/lookout.status"
+  run_watcher_for_status "$MAIN" lookout
+  ack_wakes "$MAIN" || fail "done signal could not be acknowledged"
+  printf 'working: follow-up started\n' >> "$MAIN/state/lookout.status"
+  run_watcher_for_status "$MAIN" lookout
+  ack_wakes "$MAIN" || fail "working signal could not be acknowledged"
+  age "$meta" "$MAIN/state/lookout.status"
+  run_real_reconcile "$MAIN" --startup
+  [ "$(wake_count "$MAIN" 'scout-cleanup:')" = 0 ] \
+    || fail "later working event left completed scout cleanup actionable"
+  [ "$(wake_count "$MAIN" 'inactive-outcome:')" = 0 ] \
+    || fail "later working event produced a completed scout presentation"
+  pass "later current-incarnation working state suppresses scout cleanup"
+}
+
+# Relaunch metadata changes invalidate rather than rewrite prior evidence.
+test_matching_scout_evidence_is_ignored_after_spawn_changes() {
+  local meta status size ident
+  make_world changed-incarnation
+  write_child "$MAIN" lookout 'done: current report ready' 'scout-before.1'
+  meta="$MAIN/state/lookout.meta"
+  make_scout "$meta"
+  prove_existing_scout_done "$MAIN" lookout
+  set_real_busy_state "$MAIN" lookout idle
+  awk '{ sub(/^spawn_gen=.*/, "spawn_gen=scout-after.2"); print }' "$meta" > "$meta.tmp"
+  mv "$meta.tmp" "$meta"
+  age "$meta" "$MAIN/state/lookout.status"
+
+  run_real_reconcile "$MAIN" --startup
+  [ "$(wake_count "$MAIN" 'scout-cleanup:')" = 0 ] \
+    || fail "old matching evidence was accepted after spawn_gen changed"
+  assert_grep 'incarnation=scout-before.1' "$MAIN/state/scout-completions/lookout.evidence" \
+    "relaunch rewrote old completion evidence as current"
+
+  status="$MAIN/state/lookout.status"
+  size=$(LC_ALL=C wc -c < "$status" | tr -d ' ')
+  ident=$(bash -c '. "$1"; _fm_open_decisions_file_ident "$2"' \
+    _ "$ROOT/bin/fm-classify-lib.sh" "$status") || fail "could not identify relaunch boundary"
+  awk -v size="$size" -v ident="$ident" '
+    /^status_boundary=/ { print "status_boundary=" size; next }
+    /^status_identity=/ { print "status_identity=" ident; next }
+    { print }
+  ' "$meta" > "$meta.tmp"
+  mv "$meta.tmp" "$meta"
+  observe_scout_status "$MAIN" lookout
+  assert_grep 'incarnation=scout-before.1' "$MAIN/state/scout-completions/lookout.evidence" \
+    "a relaunch with no new event relabeled old evidence as current"
+
+  printf 'done: replacement report ready\n' >> "$status"
+  observe_scout_status "$MAIN" lookout
+  assert_grep 'incarnation=scout-after.2' "$MAIN/state/scout-completions/lookout.evidence" \
+    "a new current-incarnation completion did not replace stale evidence"
+  pass "completion evidence is ignored rather than rewritten after spawn_gen changes"
+}
+
+test_missing_legacy_and_unsafe_scout_evidence_fail_closed() {
+  local meta evidence target shape
+  make_world legacy-no-boundary
+  write_child "$MAIN" lookout 'done: legacy report' 'scout-legacy.1'
+  meta="$MAIN/state/lookout.meta"
+  make_scout "$meta"
+  set_real_busy_state "$MAIN" lookout idle
+  age "$meta" "$MAIN/state/lookout.status"
+  run_real_reconcile "$MAIN" --startup
+  [ "$(wake_count "$MAIN" 'scout-cleanup:')" = 0 ] \
+    || fail "legacy metadata without an exact boundary minted cleanup"
+
+  for shape in corrupt symlink; do
+    make_world "unsafe-evidence-$shape"
+    write_child "$MAIN" lookout 'done: current report ready' "scout-$shape.1"
+    meta="$MAIN/state/lookout.meta"
+    make_scout "$meta"
+    prove_existing_scout_done "$MAIN" lookout
+    set_real_busy_state "$MAIN" lookout idle
+    evidence="$MAIN/state/scout-completions/lookout.evidence"
+    if [ "$shape" = corrupt ]; then
+      printf 'schema=broken\n' > "$evidence"
+    else
+      target="$WORLD/evidence-target"
+      printf 'preserve target\n' > "$target"
+      rm -f "$evidence"
+      ln -s "$target" "$evidence"
+    fi
+    age "$meta" "$MAIN/state/lookout.status"
+    run_real_reconcile "$MAIN" --startup
+    [ "$(wake_count "$MAIN" 'scout-cleanup:')" = 0 ] \
+      || fail "$shape evidence minted cleanup"
+    [ "$(wake_count "$MAIN" 'inactive-reconcile-diagnostic:scout-completion:lookout')" = 1 ] \
+      || fail "$shape evidence did not surface a safe diagnostic"
+    if [ "$shape" = symlink ]; then
+      [ "$(cat "$target")" = 'preserve target' ] || fail "symlink evidence changed its target"
+    fi
+  done
+  pass "missing legacy and unsafe scout evidence fail closed"
 }
 
 # A secondmate delivers a child's terminal ledger line to the parent on the
@@ -1044,8 +1282,12 @@ test_main_direct_terminal_presentation_receipt
 test_completed_scout_cleanup_repeats_until_metadata_retires
 test_completed_scout_invalid_reports_repeat_without_cleanup
 test_historical_scout_done_does_not_clean_active_replacement
+test_historical_scout_done_does_not_clean_busy_replacement
 test_current_secondmate_scout_done_gets_local_cleanup
 test_current_done_scout_with_trailing_resolved_gets_cleanup
+test_current_done_scout_then_working_is_not_cleanup_actionable
+test_matching_scout_evidence_is_ignored_after_spawn_changes
+test_missing_legacy_and_unsafe_scout_evidence_fail_closed
 test_local_secondmate_delivers_terminal_ledger_line
 test_secondmate_multiline_terminal_outcome_is_delivered_once
 test_secondmate_unterminated_prose_reports_run_outcome

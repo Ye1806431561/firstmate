@@ -2534,6 +2534,19 @@ EOF
     # shellcheck disable=SC2086  # $files is a space-separated status-path list (ids carry no spaces)
     signal_files_actionable $files
     signal_actionable=$?
+    # Publish generation-bound scout lifecycle evidence before any status wake
+    # can be offered to another supervisor. The observer revalidates metadata,
+    # status identity, and endpoint under the task lifecycle lock; failure keeps
+    # the ordinary signal path intact and therefore fails toward MAIN review.
+    while IFS=$(printf '\t') read -r f surface_end surface_ident; do
+      [ -n "$f" ] || continue
+      FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+        "$SCRIPT_DIR/fm-inactive-reconcile.sh" observe-status \
+        "$f" "$surface_end" "$surface_ident" 2>/dev/null \
+        || triage_log "scout completion evidence unavailable for $(basename "$f")"
+    done <<EOF
+$FM_SIGNAL_SURFACE_ENDPOINTS
+EOF
     # A decision-owned file's queued row payload is marked "needs-decision:"
     # instead of the ordinary "signal:" below (other files in the same batch
     # keep the ordinary payload). The wake reason line itself, and every
