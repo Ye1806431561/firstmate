@@ -1,0 +1,19 @@
+$ fm-inactive-reconcile.sh observe-status <status> 24 <identity>
+
+--- completion evidence ---
+schema=fm-scout-completion.v1
+task_id=scout-proof
+incarnation=live-obligation.1
+status_identity=strong:16777233:181502415:1577808000.000000000
+boundary=0
+cursor=24
+lifecycle=done
+done_cursor=24
+
+$ fm-inactive-reconcile.sh scan --startup (after 60s inactivity)
+actionable: completed scout still has live task records and needs guarded cleanup: child=scout-proof report=data/scout-proof/report.md; MAIN must complete the captain-call inventory, then run bin/fm-teardown.sh scout-proof, which must pass every cleanup safety check
+
+--- durable wake record ---
+1790067238	1	check	inactive-outcome:53463d94ef836f90af591e25b2e8dc80	completed scout still has live task records and needs guarded cleanup: child=scout-proof report=data/scout-proof/report.md; MAIN must complete the captain-call inventory, then run bin/fm-teardown.sh scout-proof, which must pass every cleanup safety check
+
+PASS: completed scout produced a durable guarded-cleanup obligation.

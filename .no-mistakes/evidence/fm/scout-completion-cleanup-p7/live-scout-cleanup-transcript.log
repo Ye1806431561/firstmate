@@ -1,0 +1,83 @@
+spawned live-scout-p7 harness=sh kind=scout window=fm-lab-scout-cleanup-p7-89701-25430:w1:p2 worktree=/Users/pingu/.treehouse/project-e4435f/9/project
+
+== live spawned scout metadata ==
+kind=scout
+spawn_gen=s1790065586.89776.19260
+status_boundary=0
+status_identity=absent
+backend=herdr
+herdr_session=fm-lab-scout-cleanup-p7-89701-25430
+herdr_pane_id=w1:p2
+
+== live Herdr pane before observation ==
+{"pane_id":"w1:p2","workspace_id":"w1"}
+
+== watcher-published completion evidence ==
+schema=fm-scout-completion.v1
+task_id=live-scout-p7
+incarnation=s1790065586.89776.19260
+status_identity=strong:16777233:181444419:1790065590.149218124
+boundary=0
+cursor=24
+lifecycle=done
+done_cursor=24
+
+== authoritative crew state before reconciliation ==
+state: unknown · source: pane · harness state unavailable (unknown missing)
+actionable: completed scout still has live task records and needs guarded cleanup: child=live-scout-p7 report=data/live-scout-p7/report.md; MAIN must complete the captain-call inventory, then run bin/fm-teardown.sh live-scout-p7, which must pass every cleanup safety check
+
+== first MAIN cleanup obligation ==
+1790065592	2	signal	live-scout-p7.status	signal: /Users/pingu/.no-mistakes/worktrees/cf643f0cad13/01M3427WTJ3A7JJCPWTD0YG3XW/.live-scout-validation/home/state/live-scout-p7.status
+1790065594	3	check	inactive-outcome:d11d15bf15cc18a665d3ba06792d0ca5	completed scout still has live task records and needs guarded cleanup: child=live-scout-p7 report=data/live-scout-p7/report.md; MAIN must complete the captain-call inventory, then run bin/fm-teardown.sh live-scout-p7, which must pass every cleanup safety check
+wake annotation: latest wake-EVENT observed at drain, not current state: live-scout-p7.status: done: live report ready
+STATUS OUTCOME BACKSTOP (newest captain-facing task event has no covering branch outcome):
+live-scout-p7 done: live report ready
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 3 --recovery-generation 93185.1790065592.wTC1YM
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher process holds this home lock (last beat: 5s ago).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  After draining queued wakes, repair a missing or failed watcher cycle with the Pi tool fm_watch_arm_pi, or restart Pi with -e /Users/pingu/.no-mistakes/worktrees/cf643f0cad13/01M3427WTJ3A7JJCPWTD0YG3XW/.pi/extensions/fm-primary-turnend-guard.ts -e /Users/pingu/.no-mistakes/worktrees/cf643f0cad13/01M3427WTJ3A7JJCPWTD0YG3XW/.pi/extensions/fm-primary-pi-watch.ts if the extensions are not loaded.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WARNING: queued wakes pending - drain them with bin/fm-wake-drain.sh before anything else.
+actionable: completed scout still has live task records and needs guarded cleanup: child=live-scout-p7 report=data/live-scout-p7/report.md; MAIN must complete the captain-call inventory, then run bin/fm-teardown.sh live-scout-p7, which must pass every cleanup safety check
+
+== repeated MAIN cleanup obligation after acknowledgement ==
+1790065596	4	check	scout-cleanup:d11d15bf15cc18a665d3ba06792d0ca5	completed scout still has live task records and needs guarded cleanup: child=live-scout-p7 report=data/live-scout-p7/report.md; MAIN must complete the captain-call inventory, then run bin/fm-teardown.sh live-scout-p7, which must pass every cleanup safety check
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 4 --recovery-generation 95480.1790065596.QOUOup
+WARNING: watcher still down (same stale episode; last beat: 7s ago, grace 300s) - full banner already printed this episode.
+WARNING: queued wakes pending - drain them with bin/fm-wake-drain.sh before anything else.
+
+== guarded teardown refuses before captain-call inventory ==
+WARNING: watcher still down (same stale episode; last beat: 8s ago, grace 300s) - full banner already printed this episode.
+WARNING: queued wakes pending - drain them with bin/fm-wake-drain.sh before anything else.
+fm-captain-hold: origin live-scout-p7 has no completed captain-call inventory
+REFUSED: scout task live-scout-p7 has not passed the captain-call completion gate.
+Inventory its report and any visual review through bin/fm-captain-hold.sh before teardown.
+
+== record completed captain-call inventory and retry guarded teardown ==
+complete: live-scout-p7 captain-call inventory reviewed
+WARNING: watcher still down (same stale episode; last beat: 9s ago, grace 300s) - full banner already printed this episode.
+WARNING: queued wakes pending - drain them with bin/fm-wake-drain.sh before anything else.
+teardown: reaping leaked worktree process(es) for live-scout-p7: 90892
+teardown: force-killing leaked worktree process(es) for live-scout-p7: 90892
+🌳 Worktree returned to pool.
+teardown live-scout-p7 complete (window fm-lab-scout-cleanup-p7-89701-25430:w1:p2, worktree /Users/pingu/.treehouse/project-e4435f/9/project)
+Backlog: live-scout-p7 just finished (this home keeps no markdown backlog at /Users/pingu/.no-mistakes/worktrees/cf643f0cad13/01M3427WTJ3A7JJCPWTD0YG3XW/.live-scout-validation/home/data/backlog.md). Update /Users/pingu/.no-mistakes/worktrees/cf643f0cad13/01M3427WTJ3A7JJCPWTD0YG3XW/.live-scout-validation/home/data/backlog.md - move live-scout-p7 to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+
+== non-scout spawn ignores unsafe historical status shape ==
+notice: live-ship-p7 ships mode=local-only while the standing posture for project is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+spawned live-ship-p7 harness=sh kind=ship mode=local-only yolo=off window=fm-lab-scout-cleanup-p7-89701-25430:w2:p2 worktree=/Users/pingu/.treehouse/project-e4435f/1/project
+kind=ship
+backend=herdr
+herdr_session=fm-lab-scout-cleanup-p7-89701-25430
+herdr_pane_id=w2:p2
+WARNING: watcher still down (same stale episode; last beat: 24s ago, grace 300s) - full banner already printed this episode.
+WARNING: queued wakes pending - drain them with bin/fm-wake-drain.sh before anything else.
+teardown: reaping leaked worktree process(es) for live-ship-p7: 539
+teardown: force-killing leaked worktree process(es) for live-ship-p7: 539
+🌳 Worktree returned to pool.
+teardown live-ship-p7 complete (window fm-lab-scout-cleanup-p7-89701-25430:w2:p2, worktree /Users/pingu/.treehouse/project-e4435f/1/project)
+Backlog: live-ship-p7 just finished (this home keeps no markdown backlog at /Users/pingu/.no-mistakes/worktrees/cf643f0cad13/01M3427WTJ3A7JJCPWTD0YG3XW/.live-scout-validation/home/data/backlog.md). Update /Users/pingu/.no-mistakes/worktrees/cf643f0cad13/01M3427WTJ3A7JJCPWTD0YG3XW/.live-scout-validation/home/data/backlog.md - move live-ship-p7 to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+PASS: completion produced a durable repeated MAIN obligation; guarded teardown retired only task evidence and left the shared directory intact; non-scout spawn ignored an unsafe status path and carried no scout boundary fields.

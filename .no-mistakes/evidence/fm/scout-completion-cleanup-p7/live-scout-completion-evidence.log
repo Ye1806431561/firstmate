@@ -1,0 +1,27 @@
+SESSION=fm-lab-scoutproof-19469-30308
+$ fm-spawn.sh scout-proof <isolated-project> --scout --harness pi --backend herdr
+warning: herdr presentation parent is absent or ambiguous; using the ordinary flat layout without projection
+spawned scout-proof harness=pi kind=scout window=fm-lab-scoutproof-19469-30308:w1:p2 worktree=/Users/pingu/.treehouse/probe-f3898a/1/probe
+
+--- live scout status ---
+done [at=1790067096]: README.md:1 contains 'runtime scout proof'; no project files were changed.
+
+--- spawn metadata boundary ---
+kind=scout
+spawn_gen=s1790066984.19612.28987
+status_boundary=0
+status_identity=absent
+backend=herdr
+herdr_session=fm-lab-scoutproof-19469-30308
+
+--- watcher-published completion evidence ---
+schema=fm-scout-completion.v1
+task_id=scout-proof
+incarnation=s1790066984.19612.28987
+status_identity=strong:16777233:181501862:1790067096.227719529
+boundary=0
+cursor=97
+lifecycle=done
+done_cursor=97
+
+PASS: real Pi scout completed in the guarded Herdr lab and the real watcher published incarnation-bound done evidence.
