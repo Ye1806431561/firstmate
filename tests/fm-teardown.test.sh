@@ -2007,6 +2007,17 @@ test_scout_completion_evidence_retirement_is_parent_safe_and_task_scoped() {
     "evidence-task-scoped: retired task evidence survived"
   assert_grep 'other evidence' "$case_dir/state/scout-completions/other-task.evidence" \
     "evidence-task-scoped: another task's evidence was altered"
+
+  case_dir=$(make_case evidence-shared-directory)
+  write_meta "$case_dir" local-only ship
+  mkdir -p "$case_dir/state/scout-completions"
+  printf 'task evidence\n' > "$case_dir/state/scout-completions/task-x1.evidence"
+  run_teardown "$case_dir" --force > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "evidence-shared-directory: guarded teardown failed"
+  [ -d "$case_dir/state/scout-completions" ] \
+    || fail "evidence-shared-directory: teardown removed the shared publication directory"
+  [ ! -e "$case_dir/state/scout-completions/task-x1.evidence" ] \
+    || fail "evidence-shared-directory: retired task evidence survived"
   pass "scout completion evidence retirement is parent-safe and task-scoped"
 }
 

@@ -602,6 +602,98 @@ test_matching_scout_evidence_is_ignored_after_spawn_changes() {
   pass "completion evidence is ignored rather than rewritten after spawn_gen changes"
 }
 
+test_watcher_observer_lock_contention_is_retryable_and_nonblocking() {
+  local meta status marker before after holder i started elapsed size ident rc external
+  make_world watcher-publication-retry
+  write_child "$MAIN" lookout 'working: initial scout work' 'scout-retry.1'
+  meta="$MAIN/state/lookout.meta"
+  status="$MAIN/state/lookout.status"
+  make_scout "$meta"
+  set_status_boundary "$MAIN" lookout
+  prime_seen "$MAIN/state" "$status"
+  marker="$MAIN/state/.seen-lookout_status"
+  before=$(cat "$marker")
+  printf 'done: report ready\n' >> "$status"
+  external="$WORLD/external-evidence"
+  mkdir -p "$external"
+  ln -s "$external" "$MAIN/state/scout-completions"
+
+  run_watcher_for_status "$MAIN" lookout
+  after=$(cat "$marker")
+  [ "$after" = "$before" ] || fail "failed scout publication advanced its consumed marker"
+  ack_wakes "$MAIN" || fail "failed publication wake could not be acknowledged"
+  rm "$MAIN/state/scout-completions"
+  mkdir "$MAIN/state/scout-completions"
+  run_watcher_for_status "$MAIN" lookout
+  assert_grep 'lifecycle=done' "$MAIN/state/scout-completions/lookout.evidence" \
+    "failed scout publication was not retried"
+  after=$(cat "$marker")
+  [ "$after" != "$before" ] || fail "successful scout retry did not consume its status span"
+
+  make_world observer-scout-lock-contention
+  write_child "$MAIN" lookout 'done: report ready' 'scout-contended.1'
+  meta="$MAIN/state/lookout.meta"
+  status="$MAIN/state/lookout.status"
+  make_scout "$meta"
+  printf 'status_boundary=0\nstatus_identity=absent\n' >> "$meta"
+  size=$(LC_ALL=C wc -c < "$status" | tr -d ' ')
+  ident=$(bash -c '. "$1"; _fm_open_decisions_file_ident "$2"' \
+    _ "$ROOT/bin/fm-classify-lib.sh" "$status") || fail "could not identify contended scout status"
+  FM_HOME="$MAIN" FM_STATE_OVERRIDE="$MAIN/state" bash -c '
+    . "$1/bin/fm-wake-lib.sh"
+    lock=$(fm_meta_lock_path "$FM_STATE_OVERRIDE/lookout.meta")
+    fm_lock_acquire_wait "$lock"
+    : > "$2/observer-lock-held"
+    while [ ! -e "$2/release-observer-lock" ]; do sleep 0.05; done
+    fm_lock_release "$lock"
+  ' _ "$ROOT" "$WORLD" &
+  holder=$!
+  i=0
+  while [ "$i" -lt 40 ] && [ ! -e "$WORLD/observer-lock-held" ]; do sleep 0.05; i=$((i + 1)); done
+  [ -e "$WORLD/observer-lock-held" ] || { reap "$holder"; fail "observer lock holder did not start"; }
+  started=$(date +%s)
+  FM_HOME="$MAIN" FM_STATE_OVERRIDE="$MAIN/state" \
+    "$RECON" observe-status "$status" "$size" "$ident" >/dev/null 2>&1
+  rc=$?
+  elapsed=$(($(date +%s) - started))
+  : > "$WORLD/release-observer-lock"
+  reap "$holder"
+  [ "$rc" -ne 0 ] || fail "contended scout observation reported success"
+  [ "$elapsed" -lt 3 ] || fail "scout observation blocked on metadata lock"
+  observe_scout_status "$MAIN" lookout
+  assert_grep 'lifecycle=done' "$MAIN/state/scout-completions/lookout.evidence" \
+    "released scout observation did not publish evidence"
+
+  make_world observer-ship-lock-contention
+  write_child "$MAIN" freighter 'done: ship ready' 'ship-contended.1'
+  status="$MAIN/state/freighter.status"
+  size=$(LC_ALL=C wc -c < "$status" | tr -d ' ')
+  ident=$(bash -c '. "$1"; _fm_open_decisions_file_ident "$2"' \
+    _ "$ROOT/bin/fm-classify-lib.sh" "$status") || fail "could not identify contended ship status"
+  FM_HOME="$MAIN" FM_STATE_OVERRIDE="$MAIN/state" bash -c '
+    . "$1/bin/fm-wake-lib.sh"
+    lock=$(fm_meta_lock_path "$FM_STATE_OVERRIDE/freighter.meta")
+    fm_lock_acquire_wait "$lock"
+    : > "$2/ship-lock-held"
+    while [ ! -e "$2/release-ship-lock" ]; do sleep 0.05; done
+    fm_lock_release "$lock"
+  ' _ "$ROOT" "$WORLD" &
+  holder=$!
+  i=0
+  while [ "$i" -lt 40 ] && [ ! -e "$WORLD/ship-lock-held" ]; do sleep 0.05; i=$((i + 1)); done
+  [ -e "$WORLD/ship-lock-held" ] || { reap "$holder"; fail "ship lock holder did not start"; }
+  started=$(date +%s)
+  FM_HOME="$MAIN" FM_STATE_OVERRIDE="$MAIN/state" \
+    "$RECON" observe-status "$status" "$size" "$ident" >/dev/null 2>&1
+  rc=$?
+  elapsed=$(($(date +%s) - started))
+  : > "$WORLD/release-ship-lock"
+  reap "$holder"
+  [ "$rc" -eq 0 ] || fail "non-scout observation failed under an irrelevant metadata lock"
+  [ "$elapsed" -lt 3 ] || fail "non-scout observation waited on an irrelevant metadata lock"
+  pass "watcher publication failures retry and observer locks do not block"
+}
+
 test_missing_legacy_and_unsafe_scout_evidence_fail_closed() {
   local meta evidence target shape
   make_world legacy-no-boundary
@@ -1408,6 +1500,7 @@ test_current_done_scout_then_working_is_not_cleanup_actionable
 test_split_scout_lifecycle_lines_match_whole_events
 test_relaunch_boundary_discards_predecessor_partial_line
 test_matching_scout_evidence_is_ignored_after_spawn_changes
+test_watcher_observer_lock_contention_is_retryable_and_nonblocking
 test_missing_legacy_and_unsafe_scout_evidence_fail_closed
 test_local_secondmate_delivers_terminal_ledger_line
 test_secondmate_multiline_terminal_outcome_is_delivered_once

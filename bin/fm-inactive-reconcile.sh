@@ -441,7 +441,7 @@ scout_evidence_publish() { # <record> <task> <incarnation> <identity> <boundary>
 # identity checked before and after, and one invocation reads at most 64 KiB;
 # an unexpectedly larger gap fails closed and leaves the status wake for MAIN.
 observe_scout_status() { # <status-file> <captured-end> <captured-identity>
-  local status=$1 endpoint=$2 identity=$3 id meta lock incarnation boundary meta_identity record
+  local status=$1 endpoint=$2 identity=$3 id meta lock kind incarnation boundary meta_identity record
   local start lifecycle=unknown done_cursor=0 span tmp prev_tmp line verb size after_identity
   local evidence_current=0 discard_first=0 processed_cursor line_bytes
   case "$endpoint" in ''|*[!0-9]*) return 1 ;; esac
@@ -449,8 +449,12 @@ observe_scout_status() { # <status-file> <captured-end> <captured-identity>
   valid_id "$id" || return 1
   [ "$status" = "$STATE/$id.status" ] || return 1
   meta="$STATE/$id.meta"
+  if [ -f "$meta" ] && [ ! -L "$meta" ]; then
+    kind=$(meta_field "$meta" kind)
+    [ -z "$kind" ] || [ "$kind" = scout ] || return 0
+  fi
   lock=$(fm_meta_lock_path "$meta") || return 1
-  fm_lock_acquire_wait "$lock" || return 1
+  fm_lock_try_acquire "$lock" || return 1
   if [ ! -f "$meta" ] || [ -L "$meta" ] || [ "$(meta_field "$meta" kind)" != scout ] \
     || [ ! -f "$status" ] || [ -L "$status" ] || [ ! -r "$status" ]; then
     fm_lock_release "$lock"

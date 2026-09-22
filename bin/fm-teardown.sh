@@ -3238,7 +3238,6 @@ cleanup_firstmate_home_children() {
       "$sub_state/$child_id.cursor-session" "$sub_state/$child_id.reconcile-nudged" \
       "$sub_state/.$child_id.branch-outcome-index" \
       "$sub_state/scout-completions/$child_id.evidence"
-    rmdir "$sub_state/scout-completions" 2>/dev/null || true
   done
 }
 
@@ -3693,7 +3692,6 @@ rm -f "$STATE/$ID.turn-ended" "$STATE/$ID.progress" \
   "$STATE/$ID.control-relaunch.brief-prior" "$STATE/$ID.control-relaunch.note" \
   "$STATE/$ID.reconcile-nudged" "$STATE/$ID.gemini-settings.json" \
   "$STATE/.$ID.branch-outcome-index" "$STATE/scout-completions/$ID.evidence"
-rmdir "$STATE/scout-completions" 2>/dev/null || true
 # The steering inbox (bin/fm-task-inbox-lib.sh) is runtime state for the
 # retired endpoint; teardown only runs after landing is confirmed, so any
 # leftover unhandled steer here is moot rather than unlanded work.

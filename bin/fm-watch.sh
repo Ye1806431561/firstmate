@@ -2531,6 +2531,7 @@ EOF
     # status span, and the capture only once the authoritative verdict comes up short.
     FM_SIGNAL_SURFACE_ENDPOINTS=''
     FM_SIGNAL_NEEDS_DECISION_FILES=''
+    FM_SIGNAL_OBSERVE_FAILED_FILES=''
     # shellcheck disable=SC2086  # $files is a space-separated status-path list (ids carry no spaces)
     signal_files_actionable $files
     signal_actionable=$?
@@ -2540,10 +2541,12 @@ EOF
     # the ordinary signal path intact and therefore fails toward MAIN review.
     while IFS=$(printf '\t') read -r f surface_end surface_ident; do
       [ -n "$f" ] || continue
-      FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+      if ! FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
         "$SCRIPT_DIR/fm-inactive-reconcile.sh" observe-status \
-        "$f" "$surface_end" "$surface_ident" 2>/dev/null \
-        || triage_log "scout completion evidence unavailable for $(basename "$f")"
+        "$f" "$surface_end" "$surface_ident" 2>/dev/null; then
+        FM_SIGNAL_OBSERVE_FAILED_FILES="${FM_SIGNAL_OBSERVE_FAILED_FILES} ${f}"
+        triage_log "scout completion evidence unavailable for $(basename "$f")"
+      fi
     done <<EOF
 $FM_SIGNAL_SURFACE_ENDPOINTS
 EOF
@@ -2577,6 +2580,9 @@ EOF
         [ -n "$sf" ] || continue
         case "$f" in
           *.status)
+            case " $FM_SIGNAL_OBSERVE_FAILED_FILES " in
+              *" $f "*) continue ;;
+            esac
             fm_wake_status_reported_commit "$STATE" "$f" "$sig" || true
             mark_surface_reported "$f" "$sig" || true
             ;;
@@ -2587,6 +2593,9 @@ $pending
 EOF
       while IFS=$(printf '\t') read -r f surface_end surface_ident; do
         [ -n "$f" ] || continue
+        case " $FM_SIGNAL_OBSERVE_FAILED_FILES " in
+          *" $f "*) continue ;;
+        esac
         fm_wake_status_seen_commit "$STATE" "$f" "$surface_end" "$surface_ident" || true
         mark_surfaced "$f" "$surface_end" "$surface_ident"
       done <<EOF
@@ -2601,8 +2610,12 @@ EOF
 $pending
 EOF
       signal_commit_error=0
+      [ -z "$FM_SIGNAL_OBSERVE_FAILED_FILES" ] || signal_commit_error=1
       while IFS=$(printf '\t') read -r f surface_end surface_ident; do
         [ -n "$f" ] || continue
+        case " $FM_SIGNAL_OBSERVE_FAILED_FILES " in
+          *" $f "*) continue ;;
+        esac
         fm_wake_status_seen_commit "$STATE" "$f" "$surface_end" "$surface_ident" \
           || signal_commit_error=1
       done <<EOF
