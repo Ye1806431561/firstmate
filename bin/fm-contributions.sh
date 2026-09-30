@@ -34,10 +34,13 @@
 # and spends at most FM_CONTRIBUTIONS_BUDGET seconds on forge reads (default 20,
 # 1..25). Each gh call is bounded by the remaining budget and five seconds.
 # Oldest observations go first, so a large corpus progresses across polls.
-# Each distinct URL is observed once per poll and applied to every owner. A
-# final observation applies to every owner without another forge read. When
-# the budget runs out mid-observation, the poll ends with that URL's records
-# untouched; only a genuine forge failure or head change records an error.
+# Each distinct URL is observed once per poll and applied to every owner.
+# On later polls, an already saved merged or closed observation also repairs
+# existing owners left open by interrupted publication without another forge
+# read or wake: copy its observation and checked_at, clear their stale error,
+# and preserve each owner's verdict, seen, pending, notified, and other fields.
+# When the budget runs out mid-observation, the poll ends with that URL's
+# records untouched; only a genuine forge failure or head change records an error.
 # API failure leaves error evidence; an expired or absent observation is not
 # silence. FM_CONTRIBUTIONS_MAX_AGE (default 900 seconds) bounds freshness.
 # A URL whose last good observation is merged or closed is final: it is
