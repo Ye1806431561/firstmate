@@ -2166,11 +2166,20 @@ ${context.command}
       recent: Type.Optional(Type.Number({ description: "How many most-recent outcomes to read (default 20)" })),
     }),
     renderShell: "self",
-    renderCall: (_args, theme, context) => {
+    renderCall: (args, theme, context) => {
       if (calmPresentation.stockExportRendering) throw new Error("Use Pi stock export rendering");
       if (calmHides("assistant-tool-call")) return new Container();
       const shellState = context.state as OutcomesToolShellState;
-      shellState.call = new Text(theme.fg("toolTitle", theme.bold("fm_branch_outcomes")), 0, 0);
+      let title = theme.fg("toolTitle", theme.bold("fm_branch_outcomes"));
+      // Show the supplied numeric argument as Pi's stock call header does.
+      // Execution still validates it independently before reading the store.
+      if (args.recent !== undefined) {
+        const recent = JSON.stringify(args.recent);
+        title += context.expanded
+          ? `\n${theme.fg("muted", `  recent: ${recent}`)}`
+          : ` ${theme.fg("muted", `recent=${recent}`)}`;
+      }
+      shellState.call = new Text(title, 0, 0);
       return refreshOutcomesToolShell(shellState, theme, context);
     },
     renderResult: (result, options, theme, context) => {

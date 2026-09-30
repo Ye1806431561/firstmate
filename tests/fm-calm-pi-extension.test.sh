@@ -149,6 +149,64 @@ render_export_dom() {
   return 1
 }
 
+# Measure the exported page in Chrome, rather than equating retained DOM nodes
+# with visible rows. Pi keeps display:false custom messages for explicit reveal.
+prepare_export_visibility_probe() {
+  node - "$1" "$2" "${3:-normal}" <<'JS'
+const fs = require("node:fs");
+const [source, destination, mode] = process.argv.slice(2);
+const html = fs.readFileSync(source, "utf8");
+if (!html.includes("</body>")) throw new Error("export is not a complete HTML document");
+if (!["normal", "force-visible"].includes(mode)) throw new Error(`unknown probe mode: ${mode}`);
+const probe = `<script>
+window.addEventListener("load", () => {
+  const messages = document.getElementById("messages");
+  const visible = (node) => {
+    const style = getComputedStyle(node);
+    return node.getClientRects().length > 0 && style.display !== "none" &&
+      style.visibility !== "hidden" && style.visibility !== "collapse";
+  };
+  const matching = (selector, text) => [...messages.querySelectorAll(selector)]
+    .filter(node => node.textContent.includes(text));
+  const report = {
+    userVisible: matching(".user-message", "Show a deterministic tool example.").some(visible),
+    assistantVisible: matching(".assistant-message", "The deterministic tool example is complete.").some(visible),
+    visibleHooks: [...messages.querySelectorAll(".hook-message")].filter(visible).length,
+    currentVisible: ["CURRENT_WATCHER_E2E", "CURRENT_TURN_END_E2E", "CURRENT_AWAY_E2E", "CURRENT_FROM_FIRSTMATE_E2E", "CURRENT_LAUNCH_BRIEF_E2E"]
+      .map(text => matching(".user-message", text).some(visible)),
+  };
+  document.documentElement.setAttribute("data-fm-export-visibility", btoa(JSON.stringify(report)));
+});
+</script>`;
+const forceVisible = mode === "force-visible"
+  ? '<style>.hook-message-hidden { display: block !important; }</style>'
+  : "";
+fs.writeFileSync(destination, html.replace("</body>", `${forceVisible}\n${probe}\n</body>`));
+JS
+}
+
+assert_export_conversation_boundary() {
+  node - "$1" <<'JS'
+const dom = require("node:fs").readFileSync(process.argv[2], "utf8");
+const messages = dom.match(/<div id="messages">([\s\S]*?)<\/main>/)?.[1];
+const tree = dom.match(/<div[^>]*id="tree-container"[^>]*>([\s\S]*?)<div[^>]*id="tree-status"/)?.[1];
+const probe = dom.match(/data-fm-export-visibility="([A-Za-z0-9+/=]+)"/)?.[1];
+if (!messages || !tree || !probe) throw new Error("export DOM or browser visibility evidence is missing");
+const visibility = JSON.parse(Buffer.from(probe, "base64").toString("utf8"));
+if (!visibility.userVisible || !visibility.assistantVisible) throw new Error("export hid ordinary conversation");
+if (visibility.visibleHooks !== 0) throw new Error("export has a visible custom message");
+for (const current of ["CURRENT_WATCHER_E2E", "CURRENT_TURN_END_E2E", "CURRENT_AWAY_E2E", "CURRENT_FROM_FIRSTMATE_E2E", "CURRENT_LAUNCH_BRIEF_E2E"]) {
+  if (!messages.includes(current)) throw new Error(`export lost ${current}`);
+}
+if (visibility.currentVisible.length !== 5 || !visibility.currentVisible.every(value => value === true)) {
+  throw new Error("stock export hid a current operational user message");
+}
+if (!tree.includes("firstmate-synthetic-input") || !tree.includes("/tmp/probe.status")) {
+  throw new Error("export tree lost legacy provenance");
+}
+JS
+}
+
 test_home_resolution() {
   local fixture out status version
   if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
@@ -3839,22 +3897,22 @@ if (!synthetic || synthetic.display) process.exit(1);
 JS
   chrome=$(find_chrome) \
     || fail "Chrome or Chromium is required for rendered export DOM assertions; set FM_CHROME_BIN to one"
-  chrome_report=$(render_export_dom "$chrome" "$export_file" "$export_dom" "$version") \
+  prepare_export_visibility_probe "$export_file" "$TMP_ROOT/calm-export-probe.html" \
+    || fail "could not prepare the export visibility probe"
+  chrome_report=$(render_export_dom "$chrome" "$TMP_ROOT/calm-export-probe.html" "$export_dom" "$version") \
     || fail "could not render calm-mode HTML export DOM: $chrome_report"
-  node - "$export_dom" <<'JS' || fail "rendered export DOM violated the Calm conversation boundary"
-const dom = require("node:fs").readFileSync(process.argv[2], "utf8");
-const messages = dom.match(/<div id="messages">([\s\S]*?)<\/main>/)?.[1];
-const tree = dom.match(/<div[^>]*id="tree-container"[^>]*>([\s\S]*?)<div[^>]*id="tree-status"/)?.[1];
-if (!messages || !tree) process.exit(1);
-if (!/<div class="user-message"[^>]*>[\s\S]*Show a deterministic tool example\./.test(messages)) process.exit(1);
-if (!/<div class="assistant-message"[^>]*>[\s\S]*The deterministic tool example is complete\./.test(messages)) process.exit(1);
-if (messages.includes('<div class="hook-message"')) process.exit(1);
-if (messages.includes("[firstmate-synthetic-input]")) process.exit(1);
-for (const current of ["CURRENT_WATCHER_E2E", "CURRENT_TURN_END_E2E", "CURRENT_AWAY_E2E", "CURRENT_FROM_FIRSTMATE_E2E", "CURRENT_LAUNCH_BRIEF_E2E"]) {
-  if (!messages.includes(current)) process.exit(1);
-}
-if (!tree.includes("firstmate-synthetic-input") || !tree.includes("/tmp/probe.status")) process.exit(1);
-JS
+  assert_export_conversation_boundary "$export_dom" \
+    || fail "rendered export DOM violated the Calm conversation boundary"
+  # The same real-browser assertion must reject an actually visible legacy row.
+  prepare_export_visibility_probe "$export_file" "$TMP_ROOT/calm-export-negative.html" force-visible \
+    || fail "could not prepare the export visibility negative control"
+  chrome_report=$(render_export_dom "$chrome" "$TMP_ROOT/calm-export-negative.html" "$TMP_ROOT/calm-export-negative-dom.html" "$version") \
+    || fail "could not render the export visibility negative control: $chrome_report"
+  if assert_export_conversation_boundary "$TMP_ROOT/calm-export-negative-dom.html" >"$TMP_ROOT/calm-export-negative-check.txt" 2>&1; then
+    fail "export visibility assertion accepted an actually visible legacy row"
+  fi
+  assert_contains "$(cat "$TMP_ROOT/calm-export-negative-check.txt")" "export has a visible custom message" \
+    "export visibility negative control failed for a reason other than the visible row"
   # Calm returns the transcript to its own presentation once the export has been
   # rendered. That repaint runs on the macrotask right after Pi prints the export
   # confirmation, so it must not overwrite it: the captain has to keep seeing where

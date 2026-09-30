@@ -4768,6 +4768,24 @@ if (JSON.stringify(expandedActual) !== JSON.stringify(expandedStock)) {
 if (!expandedStock.join("\n").includes("OUTCOME_TWELVE") || JSON.stringify(expandedStock) === JSON.stringify(collapsedStock)) {
   throw new Error("stock rendering fixture did not exercise expanded output");
 }
+for (const callArgs of [{}, { recent: 0 }, { recent: 1.5 }, { recent: 2e100 }]) {
+  for (const width of [24, 100]) {
+    const stock = new ToolExecutionComponent("fm_branch_outcomes", "stock-args", callArgs, { showImages: false }, stockDefinition, ui, process.cwd());
+    const actual = new ToolExecutionComponent("fm_branch_outcomes", "actual-args", callArgs, { showImages: false }, actualDefinition, ui, process.cwd());
+    for (const row of [stock, actual]) {
+      row.markExecutionStarted();
+      row.setArgsComplete();
+      row.updateResult(result);
+    }
+    for (const expanded of [false, true]) {
+      stock.setExpanded(expanded);
+      actual.setExpanded(expanded);
+      if (JSON.stringify(actual.render(width)) !== JSON.stringify(stock.render(width))) {
+        throw new Error(`outcomes argument rendering differs from Pi stock: ${JSON.stringify(callArgs)}, width=${width}, expanded=${expanded}`);
+      }
+    }
+  }
+}
 pi.events.emit("firstmate:calm-presentation", { active: true, stockExportRendering: false });
 actualRow.invalidate();
 if (actualRow.render(100).length !== 0) {
