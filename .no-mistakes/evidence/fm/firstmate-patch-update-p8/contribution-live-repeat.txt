@@ -1,0 +1,128 @@
+HEAD: 51be49e0eda32438ff35434d7a0cf00721cb61ec HOME: /Users/pingu/Documents/Codex/2026-09-30/task-4/no-mistakes-recovery-worktrees/01M3RR5WF4MJMNESPSE29AWB87/.live-contribution-7k5hlvxy
+COMMAND: /Users/pingu/Documents/Codex/2026-09-30/task-4/no-mistakes-recovery-worktrees/01M3RR5WF4MJMNESPSE29AWB87/bin/fm-contributions.sh poll EXIT: 93
+STDOUT: contribution-wake: check: contributions alpha 40948fb3c274c9af57c97b7ae30bb9effb749ad7e50f23bd95cc47bc22109ccb
+STDERR: injected local beta publication interruption
+FIRST GH CALLS: api repos/kunchenguid/firstmate/pulls/4710
+api repos/kunchenguid/firstmate/issues/4710/comments?per_page=100 --paginate --slurp
+api repos/kunchenguid/firstmate/pulls/4710/reviews?per_page=100 --paginate --slurp
+api repos/kunchenguid/firstmate/pulls/4710/comments?per_page=100 --paginate --slurp
+api repos/kunchenguid/firstmate/commits/ff56b413d06508c127b38400628b1f9129194fba/check-runs?filter=all&per_page=100 --paginate --slurp
+api repos/kunchenguid/firstmate/commits/ff56b413d06508c127b38400628b1f9129194fba/statuses?per_page=100 --paginate --slurp
+api repos/kunchenguid/firstmate
+pr view https://github.com/kunchenguid/firstmate/pull/4710 --json headRefOid,reviewDecision
+FIRST GH STATUS: gh_exit=0 args=api repos/kunchenguid/firstmate/pulls/4710
+gh_exit=0 args=api repos/kunchenguid/firstmate/issues/4710/comments?per_page=100 --paginate --slurp
+gh_exit=0 args=api repos/kunchenguid/firstmate/pulls/4710/reviews?per_page=100 --paginate --slurp
+gh_exit=0 args=api repos/kunchenguid/firstmate/pulls/4710/comments?per_page=100 --paginate --slurp
+gh_exit=0 args=api repos/kunchenguid/firstmate/commits/ff56b413d06508c127b38400628b1f9129194fba/check-runs?filter=all&per_page=100 --paginate --slurp
+gh_exit=0 args=api repos/kunchenguid/firstmate/commits/ff56b413d06508c127b38400628b1f9129194fba/statuses?per_page=100 --paginate --slurp
+gh_exit=0 args=api repos/kunchenguid/firstmate
+gh_exit=0 args=pr view https://github.com/kunchenguid/firstmate/pull/4710 --json headRefOid,reviewDecision
+AFTER FIRST alpha terminal: {"state": "merged", "head": "ff56b413d06508c127b38400628b1f9129194fba", "checked_at": "2026-09-30T09:53:19Z", "checks": 15, "events": 1}
+AFTER FIRST beta: {"schema": "fm-contributions.v1", "task": "beta", "records": [{"url": "https://github.com/kunchenguid/firstmate/pull/4710", "kind": "pr", "checked_at": "2026-09-15T08:00:00Z", "error": "old failure", "verdict": {"head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "actor": "fleet", "source": "https://github.com/kunchenguid/firstmate/pull/4710#issuecomment-42", "summary": "beta verdict"}, "seen": ["acknowledged", "owner-pending"], "pending": [{"token": "owner-pending", "type": "comment", "source": "https://github.com/kunchenguid/firstmate/pull/4710#issuecomment-42", "body": "owner signal"}], "notified": ["acknowledged"], "observation": {"state": "open", "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "draft": false, "mergeable": "unknown", "can_merge": false, "review_decision": "", "reviews": [], "checks": [], "events": []}, "owner_note": "beta only"}, {"url": "https://github.com/kunchenguid/firstmate/pull/4709", "kind": "pr", "checked_at": "2026-09-16T08:00:00Z", "error": null, "verdict": null, "seen": [], "pending": [], "notified": [], "observation": {"state": "closed", "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "draft": false, "mergeable": "unknown", "can_merge": false, "review_decision": "", "reviews": [], "checks": [], "events": []}}]}
+COMMAND: /Users/pingu/Documents/Codex/2026-09-30/task-4/no-mistakes-recovery-worktrees/01M3RR5WF4MJMNESPSE29AWB87/bin/fm-contributions.sh poll EXIT: 0
+AFTER RECOVERY beta: {"schema": "fm-contributions.v1", "task": "beta", "records": [{"url": "https://github.com/kunchenguid/firstmate/pull/4709", "kind": "pr", "checked_at": "2026-09-16T08:00:00Z", "error": null, "verdict": null, "seen": [], "pending": [], "notified": [], "observation": {"state": "closed", "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "draft": false, "mergeable": "unknown", "can_merge": false, "review_decision": "", "reviews": [], "checks": [], "events": []}}, {"url": "https://github.com/kunchenguid/firstmate/pull/4710", "kind": "pr", "checked_at": "2026-09-30T09:53:19Z", "error": null, "verdict": {"head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "actor": "fleet", "source": "https://github.com/kunchenguid/firstmate/pull/4710#issuecomment-42", "summary": "beta verdict"}, "seen": ["acknowledged", "owner-pending"], "pending": [{"token": "owner-pending", "type": "comment", "source": "https://github.com/kunchenguid/firstmate/pull/4710#issuecomment-42", "body": "owner signal"}], "notified": ["acknowledged"], "observation": {"head": "ff56b413d06508c127b38400628b1f9129194fba", "state": "merged", "draft": false, "mergeable": "unknown", "can_merge": false, "review_decision": "", "reviews": [], "checks": [{"name": "PR must be raised via no-mistakes", "id": 105156839117, "status": "completed", "conclusion": "success", "started_at": "2026-09-17T09:53:04Z"}, {"name": "Behavior timing aggregate", "id": 105155699969, "status": "completed", "conclusion": "success", "started_at": "2026-09-17T09:49:11Z"}, {"name": "Behavior portable serial 1", "id": 105147601590, "status": "completed", "conclusion": "success", "started_at": "2026-09-17T09:22:08Z"}, {"name": "Behavior portable serial 3", "id": 105147601494, "status": "completed", "conclusion": "success", "started_at": "2026-09-17T09:22:08Z"}, {"name": "Behavior portable serial 2", "id": 105147601472, "status": "completed", "conclusion": "success", "started_at": "2026-09-17T09:22:08Z"}, {"name": "Behavior portable serial 5", "id": 105147601454, "status": "completed", "conclusion": "success", "started_at": "2026-09-17T09:22:08Z"}, {"name": "Behavior portable serial 4", "id": 105147601448, "status": "completed", "conclusion": "success", "started_at": "2026-09-17T09:22:07Z"}, {"name": "Stock macOS Bash snapshot compatibility", "id": 105147601394, "status": "completed", "conclusion": "success", "started_at": "2026-09-17T09:22:13Z"}, {"name": "Test coverage guard", "id": 105147601383, "status": "completed", "conclusion": "success", "started_at": "2026-09-17T09:22:07Z"}, {"name": "Lint", "id": 105147601333, "status": "completed", "conclusion": "success", "started_at": "2026-09-17T09:22:07Z"}, {"name": "Behavior tests (Herdr)", "id": 105147601308, "status": "completed", "conclusion": "success", "started_at": "2026-09-17T09:22:08Z"}, {"name": "Behavior portable parallel 2", "id": 105147601305, "status": "completed", "conclusion": "success", "started_at": "2026-09-17T09:22:08Z"}, {"name": "Repo invariants", "id": 105147601290, "status": "completed", "conclusion": "success", "started_at": "2026-09-17T09:22:08Z"}, {"name": "Behavior portable parallel 1", "id": 105147601071, "status": "completed", "conclusion": "success", "started_at": "2026-09-17T09:22:09Z"}, {"name": "PR must be raised via no-mistakes", "id": 105147600738, "status": "completed", "conclusion": "success", "started_at": "2026-09-17T09:22:08Z"}], "events": [{"token": "comment:5712772345:2026-09-17T10:21:54Z:", "type": "comment", "source": "https://github.com/kunchenguid/firstmate/pull/4710#issuecomment-5712772345", "head": null, "author": "kunchenguid", "body": "<!-- triage: 2026-09-17T10:21:54Z outcome=merged class=restore attestation=MATCH head=ff56b413d06508c127b38400628b1f9129194fba squash=3eb5b6334a80e06083e3837f0032a5cec39b8e52 ci=35204720947 nm=35204720860,35207525924 workflow-approved=no -->\nSpeaking as Kun's firstmate: this is merged. Thank you @mremond \u2014 really appreciate you taking the time on this.\n\n**Attestation:** MATCH on `ff56b413d06508c127b38400628b1f9129194fba`.\n**Contract-class:** restore \u2014 tip vs main only corrects the existing `bin/"}], "absent_checks": []}, "owner_note": "beta only"}]}
+COMMAND: /Users/pingu/Documents/Codex/2026-09-30/task-4/no-mistakes-recovery-worktrees/01M3RR5WF4MJMNESPSE29AWB87/bin/fm-contributions.sh pending EXIT: 0
+STDOUT: [
+  {
+    "token": "comment:5712772345:2026-09-17T10:21:54Z:",
+    "type": "comment",
+    "source": "https://github.com/kunchenguid/firstmate/pull/4710#issuecomment-5712772345",
+    "head": null,
+    "author": "kunchenguid",
+    "body": "<!-- triage: 2026-09-17T10:21:54Z outcome=merged class=restore attestation=MATCH head=ff56b413d06508c127b38400628b1f9129194fba squash=3eb5b6334a80e06083e3837f0032a5cec39b8e52 ci=35204720947 nm=35204720860,35207525924 workflow-approved=no -->\nSpeaking as Kun's firstmate: this is merged. Thank you @mremond — really appreciate you taking the time on this.\n\n**Attestation:** MATCH on `ff56b413d06508c127b38400628b1f9129194fba`.\n**Contract-class:** restore — tip vs main only corrects the existing `bin/",
+    "task": "alpha",
+    "url": "https://github.com/kunchenguid/firstmate/pull/4710"
+  },
+  {
+    "token": "owner-pending",
+    "type": "comment",
+    "source": "https://github.com/kunchenguid/firstmate/pull/4710#issuecomment-42",
+    "body": "owner signal",
+    "task": "beta",
+    "url": "https://github.com/kunchenguid/firstmate/pull/4710"
+  }
+]
+COMMAND: /Users/pingu/Documents/Codex/2026-09-30/task-4/no-mistakes-recovery-worktrees/01M3RR5WF4MJMNESPSE29AWB87/bin/fm-bearings-snapshot.sh --json EXIT: 0
+STDOUT: {
+  "schema": "fm-bearings.v1",
+  "home": "01M3RR5WF4MJMNESPSE29AWB87/.live-contribution-7k5hlvxy",
+  "generated": "2026-09-30T09:53:31Z",
+  "prs": "not_requested (run: /bearings include PRs)",
+  "contributions": {
+    "scope": "owned contributions per home",
+    "known": 2,
+    "checked": 2,
+    "counts": {
+      "captain": 0,
+      "fleet": 0,
+      "maintainer": 0,
+      "nobody": 2
+    },
+    "complete": true,
+    "proven_clear": true,
+    "unmeasured_homes": 0,
+    "unreadable_records": 0,
+    "unmeasured": 0,
+    "stale_verdicts": 0,
+    "missing_verdicts": 0,
+    "captain_omitted": 0,
+    "captain": []
+  },
+  "in_flight": [],
+  "secondmates": [],
+  "secondmate_reconcile": [],
+  "decisions_open": [],
+  "landed": [],
+  "gates": [
+    {
+      "id": "alpha",
+      "title": "PR",
+      "blocked_by": "-",
+      "reason": "-",
+      "owner": "(main)",
+      "filed": null
+    },
+    {
+      "id": "beta",
+      "title": "PR",
+      "blocked_by": "-",
+      "reason": "-",
+      "owner": "(main)",
+      "filed": null
+    }
+  ],
+  "reports": [],
+  "recorded_prs": [],
+  "omitted": [
+    {
+      "surface": "backlog item bodies",
+      "reveal": "--fields bodies"
+    },
+    {
+      "surface": "task paths",
+      "reveal": "--fields paths"
+    },
+    {
+      "surface": "watch/steer actions",
+      "reveal": "--fields actions"
+    },
+    {
+      "surface": "healthy endpoint detail",
+      "reveal": "--fields endpoints"
+    },
+    {
+      "surface": "full scout-report inventory",
+      "reveal": "--all-reports"
+    },
+    {
+      "surface": "live PR discovery + checks",
+      "reveal": "--include-prs"
+    }
+  ]
+}
+BEARINGS CONTRIBUTIONS: {"scope": "owned contributions per home", "known": 2, "checked": 2, "counts": {"captain": 0, "fleet": 0, "maintainer": 0, "nobody": 2}, "complete": true, "proven_clear": true, "unmeasured_homes": 0, "unreadable_records": 0, "unmeasured": 0, "stale_verdicts": 0, "missing_verdicts": 0, "captain_omitted": 0, "captain": []}
+COMMAND: /Users/pingu/Documents/Codex/2026-09-30/task-4/no-mistakes-recovery-worktrees/01M3RR5WF4MJMNESPSE29AWB87/bin/fm-contributions.sh ack beta https://github.com/kunchenguid/firstmate/pull/4710 owner-pending EXIT: 0
+COMMAND: /Users/pingu/Documents/Codex/2026-09-30/task-4/no-mistakes-recovery-worktrees/01M3RR5WF4MJMNESPSE29AWB87/bin/fm-contributions.sh poll EXIT: 0
+ASSERTIONS: real forge 8 successful reads once; interrupted beta remains open; recovered full terminal observation and checked_at; own fields and second URL preserved; pending independently acked; Bearings terminal; replay byte/semantic stable; recovery/replay forge reads 0; wake bytes unchanged.
+RESULT: PASS
