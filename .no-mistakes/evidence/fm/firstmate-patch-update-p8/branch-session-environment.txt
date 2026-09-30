@@ -1,0 +1,4 @@
+PRETTY_NAME="Ubuntu 24.04.5 LTS"
+v22.23.2
+0.99.1
+aarch64

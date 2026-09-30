@@ -1,0 +1,1081 @@
+{
+  "calls": [
+    {
+      "type": "toolCall",
+      "id": "call_1",
+      "name": "fm_branch_outcomes",
+      "arguments": {}
+    },
+    {
+      "type": "toolCall",
+      "id": "call_2",
+      "name": "fm_branch_outcomes",
+      "arguments": {
+        "recent": 0
+      }
+    },
+    {
+      "type": "toolCall",
+      "id": "call_3",
+      "name": "fm_branch_outcomes",
+      "arguments": {
+        "recent": 1.5
+      }
+    },
+    {
+      "type": "toolCall",
+      "id": "call_4",
+      "name": "fm_branch_outcomes",
+      "arguments": {
+        "recent": 2e+100
+      }
+    },
+    {
+      "type": "toolCall",
+      "id": "call_5",
+      "name": "fm_branch_outcomes",
+      "arguments": {
+        "recent": 2
+      }
+    }
+  ],
+  "events": [
+    {
+      "type": "message_end"
+    },
+    {
+      "type": "message_end"
+    },
+    {
+      "type": "message_end"
+    },
+    {
+      "type": "tool_execution_start",
+      "toolCallId": "call_1"
+    },
+    {
+      "type": "tool_execution_end",
+      "toolCallId": "call_1",
+      "isError": false,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "(no branch outcomes recorded)"
+          }
+        ]
+      }
+    },
+    {
+      "type": "message_end"
+    },
+    {
+      "type": "message_end"
+    },
+    {
+      "type": "tool_execution_start",
+      "toolCallId": "call_2"
+    },
+    {
+      "type": "tool_execution_end",
+      "toolCallId": "call_2",
+      "isError": false,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "(no branch outcomes recorded)"
+          }
+        ]
+      }
+    },
+    {
+      "type": "message_end"
+    },
+    {
+      "type": "message_end"
+    },
+    {
+      "type": "tool_execution_start",
+      "toolCallId": "call_3"
+    },
+    {
+      "type": "tool_execution_end",
+      "toolCallId": "call_3",
+      "isError": false,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "(no branch outcomes recorded)"
+          }
+        ]
+      }
+    },
+    {
+      "type": "message_end"
+    },
+    {
+      "type": "message_end"
+    },
+    {
+      "type": "tool_execution_start",
+      "toolCallId": "call_4"
+    },
+    {
+      "type": "tool_execution_end",
+      "toolCallId": "call_4",
+      "isError": true,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "could not read the outcome store: fm-branch-outcome.sh exited 2: usage: fm-branch-outcome.sh append --task <id> --verdict routine|captain --summary <text> [--wake <text>] [--silent true|false] | unread | mark-read --through <seq> | unprocessed | mark-processed --through <seq> | processed-init [--held-lock] | list [--recent <n>] | startup-replay"
+          }
+        ],
+        "isError": true
+      }
+    },
+    {
+      "type": "message_end"
+    },
+    {
+      "type": "message_end"
+    },
+    {
+      "type": "tool_execution_start",
+      "toolCallId": "call_5"
+    },
+    {
+      "type": "tool_execution_end",
+      "toolCallId": "call_5",
+      "isError": false,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "(no branch outcomes recorded)"
+          }
+        ]
+      }
+    },
+    {
+      "type": "message_end"
+    },
+    {
+      "type": "message_end"
+    }
+  ],
+  "proof": [
+    {
+      "args": {},
+      "width": 24,
+      "expanded": false,
+      "actual": [
+        "",
+        "\u001b[49m                        \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m     \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes    \u001b[49m",
+        "\u001b[49m \u001b[2mrecorded)\u001b[22;39m              \u001b[49m",
+        "\u001b[49m                        \u001b[49m"
+      ],
+      "expected": [
+        "",
+        "\u001b[49m                        \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m     \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes    \u001b[49m",
+        "\u001b[49m \u001b[2mrecorded)\u001b[22;39m              \u001b[49m",
+        "\u001b[49m                        \u001b[49m"
+      ],
+      "equal": true,
+      "isError": false
+    },
+    {
+      "args": {},
+      "width": 24,
+      "expanded": true,
+      "actual": [
+        "",
+        "\u001b[49m                        \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m     \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes    \u001b[49m",
+        "\u001b[49m \u001b[2mrecorded)\u001b[22;39m              \u001b[49m",
+        "\u001b[49m                        \u001b[49m"
+      ],
+      "expected": [
+        "",
+        "\u001b[49m                        \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m     \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes    \u001b[49m",
+        "\u001b[49m \u001b[2mrecorded)\u001b[22;39m              \u001b[49m",
+        "\u001b[49m                        \u001b[49m"
+      ],
+      "equal": true,
+      "isError": false
+    },
+    {
+      "args": {},
+      "width": 100,
+      "expanded": false,
+      "actual": [
+        "",
+        "\u001b[49m                                                                                                    \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m                                                                                 \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes recorded)\u001b[22;39m                                                                      \u001b[49m",
+        "\u001b[49m                                                                                                    \u001b[49m"
+      ],
+      "expected": [
+        "",
+        "\u001b[49m                                                                                                    \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m                                                                                 \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes recorded)\u001b[22;39m                                                                      \u001b[49m",
+        "\u001b[49m                                                                                                    \u001b[49m"
+      ],
+      "equal": true,
+      "isError": false
+    },
+    {
+      "args": {},
+      "width": 100,
+      "expanded": true,
+      "actual": [
+        "",
+        "\u001b[49m                                                                                                    \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m                                                                                 \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes recorded)\u001b[22;39m                                                                      \u001b[49m",
+        "\u001b[49m                                                                                                    \u001b[49m"
+      ],
+      "expected": [
+        "",
+        "\u001b[49m                                                                                                    \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m                                                                                 \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes recorded)\u001b[22;39m                                                                      \u001b[49m",
+        "\u001b[49m                                                                                                    \u001b[49m"
+      ],
+      "equal": true,
+      "isError": false
+    },
+    {
+      "args": {
+        "recent": 0
+      },
+      "width": 24,
+      "expanded": false,
+      "actual": [
+        "",
+        "\u001b[49m                        \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m     \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2mrecent=0\u001b[22;39m               \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes    \u001b[49m",
+        "\u001b[49m \u001b[2mrecorded)\u001b[22;39m              \u001b[49m",
+        "\u001b[49m                        \u001b[49m"
+      ],
+      "expected": [
+        "",
+        "\u001b[49m                        \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m     \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2mrecent=0\u001b[22;39m               \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes    \u001b[49m",
+        "\u001b[49m \u001b[2mrecorded)\u001b[22;39m              \u001b[49m",
+        "\u001b[49m                        \u001b[49m"
+      ],
+      "equal": true,
+      "isError": false
+    },
+    {
+      "args": {
+        "recent": 0
+      },
+      "width": 24,
+      "expanded": true,
+      "actual": [
+        "",
+        "\u001b[49m                        \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m     \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m  recent: 0\u001b[22;39m            \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes    \u001b[49m",
+        "\u001b[49m \u001b[2mrecorded)\u001b[22;39m              \u001b[49m",
+        "\u001b[49m                        \u001b[49m"
+      ],
+      "expected": [
+        "",
+        "\u001b[49m                        \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m     \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m  recent: 0\u001b[22;39m            \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes    \u001b[49m",
+        "\u001b[49m \u001b[2mrecorded)\u001b[22;39m              \u001b[49m",
+        "\u001b[49m                        \u001b[49m"
+      ],
+      "equal": true,
+      "isError": false
+    },
+    {
+      "args": {
+        "recent": 0
+      },
+      "width": 100,
+      "expanded": false,
+      "actual": [
+        "",
+        "\u001b[49m                                                                                                    \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m \u001b[39m\u001b[2mrecent=0\u001b[22;39m                                                                        \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes recorded)\u001b[22;39m                                                                      \u001b[49m",
+        "\u001b[49m                                                                                                    \u001b[49m"
+      ],
+      "expected": [
+        "",
+        "\u001b[49m                                                                                                    \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m \u001b[39m\u001b[2mrecent=0\u001b[22;39m                                                                        \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes recorded)\u001b[22;39m                                                                      \u001b[49m",
+        "\u001b[49m                                                                                                    \u001b[49m"
+      ],
+      "equal": true,
+      "isError": false
+    },
+    {
+      "args": {
+        "recent": 0
+      },
+      "width": 100,
+      "expanded": true,
+      "actual": [
+        "",
+        "\u001b[49m                                                                                                    \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m                                                                                 \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m  recent: 0\u001b[22;39m                                                                                        \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes recorded)\u001b[22;39m                                                                      \u001b[49m",
+        "\u001b[49m                                                                                                    \u001b[49m"
+      ],
+      "expected": [
+        "",
+        "\u001b[49m                                                                                                    \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m                                                                                 \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m  recent: 0\u001b[22;39m                                                                                        \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes recorded)\u001b[22;39m                                                                      \u001b[49m",
+        "\u001b[49m                                                                                                    \u001b[49m"
+      ],
+      "equal": true,
+      "isError": false
+    },
+    {
+      "args": {
+        "recent": 1.5
+      },
+      "width": 24,
+      "expanded": false,
+      "actual": [
+        "",
+        "\u001b[49m                        \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m     \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2mrecent=1.5\u001b[22;39m             \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes    \u001b[49m",
+        "\u001b[49m \u001b[2mrecorded)\u001b[22;39m              \u001b[49m",
+        "\u001b[49m                        \u001b[49m"
+      ],
+      "expected": [
+        "",
+        "\u001b[49m                        \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m     \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2mrecent=1.5\u001b[22;39m             \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes    \u001b[49m",
+        "\u001b[49m \u001b[2mrecorded)\u001b[22;39m              \u001b[49m",
+        "\u001b[49m                        \u001b[49m"
+      ],
+      "equal": true,
+      "isError": false
+    },
+    {
+      "args": {
+        "recent": 1.5
+      },
+      "width": 24,
+      "expanded": true,
+      "actual": [
+        "",
+        "\u001b[49m                        \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m     \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m  recent: 1.5\u001b[22;39m          \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes    \u001b[49m",
+        "\u001b[49m \u001b[2mrecorded)\u001b[22;39m              \u001b[49m",
+        "\u001b[49m                        \u001b[49m"
+      ],
+      "expected": [
+        "",
+        "\u001b[49m                        \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m     \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m  recent: 1.5\u001b[22;39m          \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes    \u001b[49m",
+        "\u001b[49m \u001b[2mrecorded)\u001b[22;39m              \u001b[49m",
+        "\u001b[49m                        \u001b[49m"
+      ],
+      "equal": true,
+      "isError": false
+    },
+    {
+      "args": {
+        "recent": 1.5
+      },
+      "width": 100,
+      "expanded": false,
+      "actual": [
+        "",
+        "\u001b[49m                                                                                                    \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m \u001b[39m\u001b[2mrecent=1.5\u001b[22;39m                                                                      \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes recorded)\u001b[22;39m                                                                      \u001b[49m",
+        "\u001b[49m                                                                                                    \u001b[49m"
+      ],
+      "expected": [
+        "",
+        "\u001b[49m                                                                                                    \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m \u001b[39m\u001b[2mrecent=1.5\u001b[22;39m                                                                      \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes recorded)\u001b[22;39m                                                                      \u001b[49m",
+        "\u001b[49m                                                                                                    \u001b[49m"
+      ],
+      "equal": true,
+      "isError": false
+    },
+    {
+      "args": {
+        "recent": 1.5
+      },
+      "width": 100,
+      "expanded": true,
+      "actual": [
+        "",
+        "\u001b[49m                                                                                                    \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m                                                                                 \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m  recent: 1.5\u001b[22;39m                                                                                      \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes recorded)\u001b[22;39m                                                                      \u001b[49m",
+        "\u001b[49m                                                                                                    \u001b[49m"
+      ],
+      "expected": [
+        "",
+        "\u001b[49m                                                                                                    \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m                                                                                 \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m  recent: 1.5\u001b[22;39m                                                                                      \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes recorded)\u001b[22;39m                                                                      \u001b[49m",
+        "\u001b[49m                                                                                                    \u001b[49m"
+      ],
+      "equal": true,
+      "isError": false
+    },
+    {
+      "args": {
+        "recent": 2e+100
+      },
+      "width": 24,
+      "expanded": false,
+      "actual": [
+        "",
+        "\u001b[49m                        \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m     \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2mrecent=2e+100\u001b[22;39m          \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2mcould not read the     \u001b[49m",
+        "\u001b[49m \u001b[2moutcome store:         \u001b[49m",
+        "\u001b[49m \u001b[2mfm-branch-outcome.sh   \u001b[49m",
+        "\u001b[49m \u001b[2mexited 2: usage:       \u001b[49m",
+        "\u001b[49m \u001b[2mfm-branch-outcome.sh   \u001b[49m",
+        "\u001b[49m \u001b[2mappend --task <id>     \u001b[49m",
+        "\u001b[49m \u001b[2m--verdict              \u001b[49m",
+        "\u001b[49m \u001b[2mroutine|captain        \u001b[49m",
+        "\u001b[49m \u001b[2m--summary <text>       \u001b[49m",
+        "\u001b[49m \u001b[2m[--wake <text>]        \u001b[49m",
+        "\u001b[49m \u001b[2m[--silent true|false]  \u001b[49m",
+        "\u001b[49m \u001b[2m| unread | mark-read   \u001b[49m",
+        "\u001b[49m \u001b[2m--through <seq> |      \u001b[49m",
+        "\u001b[49m \u001b[2munprocessed |          \u001b[49m",
+        "\u001b[49m \u001b[2mmark-processed         \u001b[49m",
+        "\u001b[49m \u001b[2m--through <seq> |      \u001b[49m",
+        "\u001b[49m \u001b[2mprocessed-init         \u001b[49m",
+        "\u001b[49m \u001b[2m[--held-lock] | list   \u001b[49m",
+        "\u001b[49m \u001b[2m[--recent <n>] |       \u001b[49m",
+        "\u001b[49m \u001b[2mstartup-replay\u001b[22;39m         \u001b[49m",
+        "\u001b[49m                        \u001b[49m"
+      ],
+      "expected": [
+        "",
+        "\u001b[49m                        \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m     \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2mrecent=2e+100\u001b[22;39m          \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2mcould not read the     \u001b[49m",
+        "\u001b[49m \u001b[2moutcome store:         \u001b[49m",
+        "\u001b[49m \u001b[2mfm-branch-outcome.sh   \u001b[49m",
+        "\u001b[49m \u001b[2mexited 2: usage:       \u001b[49m",
+        "\u001b[49m \u001b[2mfm-branch-outcome.sh   \u001b[49m",
+        "\u001b[49m \u001b[2mappend --task <id>     \u001b[49m",
+        "\u001b[49m \u001b[2m--verdict              \u001b[49m",
+        "\u001b[49m \u001b[2mroutine|captain        \u001b[49m",
+        "\u001b[49m \u001b[2m--summary <text>       \u001b[49m",
+        "\u001b[49m \u001b[2m[--wake <text>]        \u001b[49m",
+        "\u001b[49m \u001b[2m[--silent true|false]  \u001b[49m",
+        "\u001b[49m \u001b[2m| unread | mark-read   \u001b[49m",
+        "\u001b[49m \u001b[2m--through <seq> |      \u001b[49m",
+        "\u001b[49m \u001b[2munprocessed |          \u001b[49m",
+        "\u001b[49m \u001b[2mmark-processed         \u001b[49m",
+        "\u001b[49m \u001b[2m--through <seq> |      \u001b[49m",
+        "\u001b[49m \u001b[2mprocessed-init         \u001b[49m",
+        "\u001b[49m \u001b[2m[--held-lock] | list   \u001b[49m",
+        "\u001b[49m \u001b[2m[--recent <n>] |       \u001b[49m",
+        "\u001b[49m \u001b[2mstartup-replay\u001b[22;39m         \u001b[49m",
+        "\u001b[49m                        \u001b[49m"
+      ],
+      "equal": true,
+      "isError": true
+    },
+    {
+      "args": {
+        "recent": 2e+100
+      },
+      "width": 24,
+      "expanded": true,
+      "actual": [
+        "",
+        "\u001b[49m                        \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m     \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m  recent: 2e+100\u001b[22;39m       \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2mcould not read the     \u001b[49m",
+        "\u001b[49m \u001b[2moutcome store:         \u001b[49m",
+        "\u001b[49m \u001b[2mfm-branch-outcome.sh   \u001b[49m",
+        "\u001b[49m \u001b[2mexited 2: usage:       \u001b[49m",
+        "\u001b[49m \u001b[2mfm-branch-outcome.sh   \u001b[49m",
+        "\u001b[49m \u001b[2mappend --task <id>     \u001b[49m",
+        "\u001b[49m \u001b[2m--verdict              \u001b[49m",
+        "\u001b[49m \u001b[2mroutine|captain        \u001b[49m",
+        "\u001b[49m \u001b[2m--summary <text>       \u001b[49m",
+        "\u001b[49m \u001b[2m[--wake <text>]        \u001b[49m",
+        "\u001b[49m \u001b[2m[--silent true|false]  \u001b[49m",
+        "\u001b[49m \u001b[2m| unread | mark-read   \u001b[49m",
+        "\u001b[49m \u001b[2m--through <seq> |      \u001b[49m",
+        "\u001b[49m \u001b[2munprocessed |          \u001b[49m",
+        "\u001b[49m \u001b[2mmark-processed         \u001b[49m",
+        "\u001b[49m \u001b[2m--through <seq> |      \u001b[49m",
+        "\u001b[49m \u001b[2mprocessed-init         \u001b[49m",
+        "\u001b[49m \u001b[2m[--held-lock] | list   \u001b[49m",
+        "\u001b[49m \u001b[2m[--recent <n>] |       \u001b[49m",
+        "\u001b[49m \u001b[2mstartup-replay\u001b[22;39m         \u001b[49m",
+        "\u001b[49m                        \u001b[49m"
+      ],
+      "expected": [
+        "",
+        "\u001b[49m                        \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m     \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m  recent: 2e+100\u001b[22;39m       \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2mcould not read the     \u001b[49m",
+        "\u001b[49m \u001b[2moutcome store:         \u001b[49m",
+        "\u001b[49m \u001b[2mfm-branch-outcome.sh   \u001b[49m",
+        "\u001b[49m \u001b[2mexited 2: usage:       \u001b[49m",
+        "\u001b[49m \u001b[2mfm-branch-outcome.sh   \u001b[49m",
+        "\u001b[49m \u001b[2mappend --task <id>     \u001b[49m",
+        "\u001b[49m \u001b[2m--verdict              \u001b[49m",
+        "\u001b[49m \u001b[2mroutine|captain        \u001b[49m",
+        "\u001b[49m \u001b[2m--summary <text>       \u001b[49m",
+        "\u001b[49m \u001b[2m[--wake <text>]        \u001b[49m",
+        "\u001b[49m \u001b[2m[--silent true|false]  \u001b[49m",
+        "\u001b[49m \u001b[2m| unread | mark-read   \u001b[49m",
+        "\u001b[49m \u001b[2m--through <seq> |      \u001b[49m",
+        "\u001b[49m \u001b[2munprocessed |          \u001b[49m",
+        "\u001b[49m \u001b[2mmark-processed         \u001b[49m",
+        "\u001b[49m \u001b[2m--through <seq> |      \u001b[49m",
+        "\u001b[49m \u001b[2mprocessed-init         \u001b[49m",
+        "\u001b[49m \u001b[2m[--held-lock] | list   \u001b[49m",
+        "\u001b[49m \u001b[2m[--recent <n>] |       \u001b[49m",
+        "\u001b[49m \u001b[2mstartup-replay\u001b[22;39m         \u001b[49m",
+        "\u001b[49m                        \u001b[49m"
+      ],
+      "equal": true,
+      "isError": true
+    },
+    {
+      "args": {
+        "recent": 2e+100
+      },
+      "width": 100,
+      "expanded": false,
+      "actual": [
+        "",
+        "\u001b[49m                                                                                                    \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m \u001b[39m\u001b[2mrecent=2e+100\u001b[22;39m                                                                   \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2mcould not read the outcome store: fm-branch-outcome.sh exited 2: usage: fm-branch-outcome.sh       \u001b[49m",
+        "\u001b[49m \u001b[2mappend --task <id> --verdict routine|captain --summary <text> [--wake <text>] [--silent            \u001b[49m",
+        "\u001b[49m \u001b[2mtrue|false] | unread | mark-read --through <seq> | unprocessed | mark-processed --through <seq> |  \u001b[49m",
+        "\u001b[49m \u001b[2mprocessed-init [--held-lock] | list [--recent <n>] | startup-replay\u001b[22;39m                                \u001b[49m",
+        "\u001b[49m                                                                                                    \u001b[49m"
+      ],
+      "expected": [
+        "",
+        "\u001b[49m                                                                                                    \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m \u001b[39m\u001b[2mrecent=2e+100\u001b[22;39m                                                                   \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2mcould not read the outcome store: fm-branch-outcome.sh exited 2: usage: fm-branch-outcome.sh       \u001b[49m",
+        "\u001b[49m \u001b[2mappend --task <id> --verdict routine|captain --summary <text> [--wake <text>] [--silent            \u001b[49m",
+        "\u001b[49m \u001b[2mtrue|false] | unread | mark-read --through <seq> | unprocessed | mark-processed --through <seq> |  \u001b[49m",
+        "\u001b[49m \u001b[2mprocessed-init [--held-lock] | list [--recent <n>] | startup-replay\u001b[22;39m                                \u001b[49m",
+        "\u001b[49m                                                                                                    \u001b[49m"
+      ],
+      "equal": true,
+      "isError": true
+    },
+    {
+      "args": {
+        "recent": 2e+100
+      },
+      "width": 100,
+      "expanded": true,
+      "actual": [
+        "",
+        "\u001b[49m                                                                                                    \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m                                                                                 \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m  recent: 2e+100\u001b[22;39m                                                                                   \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2mcould not read the outcome store: fm-branch-outcome.sh exited 2: usage: fm-branch-outcome.sh       \u001b[49m",
+        "\u001b[49m \u001b[2mappend --task <id> --verdict routine|captain --summary <text> [--wake <text>] [--silent            \u001b[49m",
+        "\u001b[49m \u001b[2mtrue|false] | unread | mark-read --through <seq> | unprocessed | mark-processed --through <seq> |  \u001b[49m",
+        "\u001b[49m \u001b[2mprocessed-init [--held-lock] | list [--recent <n>] | startup-replay\u001b[22;39m                                \u001b[49m",
+        "\u001b[49m                                                                                                    \u001b[49m"
+      ],
+      "expected": [
+        "",
+        "\u001b[49m                                                                                                    \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m                                                                                 \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m  recent: 2e+100\u001b[22;39m                                                                                   \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2mcould not read the outcome store: fm-branch-outcome.sh exited 2: usage: fm-branch-outcome.sh       \u001b[49m",
+        "\u001b[49m \u001b[2mappend --task <id> --verdict routine|captain --summary <text> [--wake <text>] [--silent            \u001b[49m",
+        "\u001b[49m \u001b[2mtrue|false] | unread | mark-read --through <seq> | unprocessed | mark-processed --through <seq> |  \u001b[49m",
+        "\u001b[49m \u001b[2mprocessed-init [--held-lock] | list [--recent <n>] | startup-replay\u001b[22;39m                                \u001b[49m",
+        "\u001b[49m                                                                                                    \u001b[49m"
+      ],
+      "equal": true,
+      "isError": true
+    },
+    {
+      "args": {
+        "recent": 2
+      },
+      "width": 24,
+      "expanded": false,
+      "actual": [
+        "",
+        "\u001b[49m                        \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m     \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2mrecent=2\u001b[22;39m               \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes    \u001b[49m",
+        "\u001b[49m \u001b[2mrecorded)\u001b[22;39m              \u001b[49m",
+        "\u001b[49m                        \u001b[49m"
+      ],
+      "expected": [
+        "",
+        "\u001b[49m                        \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m     \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2mrecent=2\u001b[22;39m               \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes    \u001b[49m",
+        "\u001b[49m \u001b[2mrecorded)\u001b[22;39m              \u001b[49m",
+        "\u001b[49m                        \u001b[49m"
+      ],
+      "equal": true,
+      "isError": false
+    },
+    {
+      "args": {
+        "recent": 2
+      },
+      "width": 24,
+      "expanded": true,
+      "actual": [
+        "",
+        "\u001b[49m                        \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m     \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m  recent: 2\u001b[22;39m            \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes    \u001b[49m",
+        "\u001b[49m \u001b[2mrecorded)\u001b[22;39m              \u001b[49m",
+        "\u001b[49m                        \u001b[49m"
+      ],
+      "expected": [
+        "",
+        "\u001b[49m                        \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m     \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m  recent: 2\u001b[22;39m            \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes    \u001b[49m",
+        "\u001b[49m \u001b[2mrecorded)\u001b[22;39m              \u001b[49m",
+        "\u001b[49m                        \u001b[49m"
+      ],
+      "equal": true,
+      "isError": false
+    },
+    {
+      "args": {
+        "recent": 2
+      },
+      "width": 100,
+      "expanded": false,
+      "actual": [
+        "",
+        "\u001b[49m                                                                                                    \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m \u001b[39m\u001b[2mrecent=2\u001b[22;39m                                                                        \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes recorded)\u001b[22;39m                                                                      \u001b[49m",
+        "\u001b[49m                                                                                                    \u001b[49m"
+      ],
+      "expected": [
+        "",
+        "\u001b[49m                                                                                                    \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m \u001b[39m\u001b[2mrecent=2\u001b[22;39m                                                                        \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes recorded)\u001b[22;39m                                                                      \u001b[49m",
+        "\u001b[49m                                                                                                    \u001b[49m"
+      ],
+      "equal": true,
+      "isError": false
+    },
+    {
+      "args": {
+        "recent": 2
+      },
+      "width": 100,
+      "expanded": true,
+      "actual": [
+        "",
+        "\u001b[49m                                                                                                    \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m                                                                                 \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m  recent: 2\u001b[22;39m                                                                                        \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes recorded)\u001b[22;39m                                                                      \u001b[49m",
+        "\u001b[49m                                                                                                    \u001b[49m"
+      ],
+      "expected": [
+        "",
+        "\u001b[49m                                                                                                    \u001b[49m",
+        "\u001b[49m \u001b[39mfm_branch_outcomes\u001b[39m                                                                                 \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m  recent: 2\u001b[22;39m                                                                                        \u001b[49m",
+        "\u001b[49m \u001b[39m\u001b[2m(no branch outcomes recorded)\u001b[22;39m                                                                      \u001b[49m",
+        "\u001b[49m                                                                                                    \u001b[49m"
+      ],
+      "equal": true,
+      "isError": false
+    }
+  ],
+  "transcript": [
+    {
+      "role": "system",
+      "content": "",
+      "sections": {
+        "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+        "tools": "<tools>\n- fm_branch_outcomes: Read what the supervision branch handled (durable outcome store).\n- fm_branch_processed: Acknowledge processed captain-facing supervision outcomes by sequence.\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+        "rules": "<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+        "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /usr/local/lib/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /usr/local/lib/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /usr/local/lib/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+        "cwd": "<cwd>\n/tmp/fm-branch-proof\n</cwd>"
+      },
+      "timestamp": 1790784667681,
+      "toolsAdded": [
+        {
+          "name": "fm_branch_outcomes",
+          "description": "Read the durable outcome store of the supervision branch: what fleet events it handled, each verdict, and each summary. Use when the captain asks what happened in the fleet.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "recent": {
+                "type": "number",
+                "description": "How many most-recent outcomes to read (default 20)"
+              }
+            }
+          }
+        },
+        {
+          "name": "fm_branch_processed",
+          "description": "Acknowledge that every captain-facing supervision outcome up to a sequence number has been processed by this conversation. Call it exactly once after handling a supervision processing request, with through set to the highest sequence that request listed; an outcome that is not acknowledged is presented again.",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "through"
+            ],
+            "properties": {
+              "through": {
+                "type": "number",
+                "description": "The highest outcome sequence number this conversation has processed"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Read branch outcomes."
+        }
+      ],
+      "timestamp": 1790784667680
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolCall",
+          "id": "call_1",
+          "name": "fm_branch_outcomes",
+          "arguments": {}
+        }
+      ],
+      "api": "openai-completions",
+      "provider": "fm-local",
+      "model": "fm-model",
+      "usage": {
+        "input": 10,
+        "output": 10,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 20,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "stopReason": "toolUse",
+      "timestamp": 1790784667721,
+      "responseId": "completion-1",
+      "rawStopReason": "tool_calls",
+      "thinkingLevel": "off"
+    },
+    {
+      "role": "toolResult",
+      "toolCallId": "call_1",
+      "toolName": "fm_branch_outcomes",
+      "content": [
+        {
+          "type": "text",
+          "text": "(no branch outcomes recorded)"
+        }
+      ],
+      "isError": false,
+      "timestamp": 1790784667775
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolCall",
+          "id": "call_2",
+          "name": "fm_branch_outcomes",
+          "arguments": {
+            "recent": 0
+          }
+        }
+      ],
+      "api": "openai-completions",
+      "provider": "fm-local",
+      "model": "fm-model",
+      "usage": {
+        "input": 10,
+        "output": 10,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 20,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "stopReason": "toolUse",
+      "timestamp": 1790784667777,
+      "responseId": "completion-2",
+      "rawStopReason": "tool_calls",
+      "thinkingLevel": "off"
+    },
+    {
+      "role": "toolResult",
+      "toolCallId": "call_2",
+      "toolName": "fm_branch_outcomes",
+      "content": [
+        {
+          "type": "text",
+          "text": "(no branch outcomes recorded)"
+        }
+      ],
+      "isError": false,
+      "timestamp": 1790784667807
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolCall",
+          "id": "call_3",
+          "name": "fm_branch_outcomes",
+          "arguments": {
+            "recent": 1.5
+          }
+        }
+      ],
+      "api": "openai-completions",
+      "provider": "fm-local",
+      "model": "fm-model",
+      "usage": {
+        "input": 10,
+        "output": 10,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 20,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "stopReason": "toolUse",
+      "timestamp": 1790784667808,
+      "responseId": "completion-3",
+      "rawStopReason": "tool_calls",
+      "thinkingLevel": "off"
+    },
+    {
+      "role": "toolResult",
+      "toolCallId": "call_3",
+      "toolName": "fm_branch_outcomes",
+      "content": [
+        {
+          "type": "text",
+          "text": "(no branch outcomes recorded)"
+        }
+      ],
+      "isError": false,
+      "timestamp": 1790784667840
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolCall",
+          "id": "call_4",
+          "name": "fm_branch_outcomes",
+          "arguments": {
+            "recent": 2e+100
+          }
+        }
+      ],
+      "api": "openai-completions",
+      "provider": "fm-local",
+      "model": "fm-model",
+      "usage": {
+        "input": 10,
+        "output": 10,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 20,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "stopReason": "toolUse",
+      "timestamp": 1790784667841,
+      "responseId": "completion-4",
+      "rawStopReason": "tool_calls",
+      "thinkingLevel": "off"
+    },
+    {
+      "role": "toolResult",
+      "toolCallId": "call_4",
+      "toolName": "fm_branch_outcomes",
+      "content": [
+        {
+          "type": "text",
+          "text": "could not read the outcome store: fm-branch-outcome.sh exited 2: usage: fm-branch-outcome.sh append --task <id> --verdict routine|captain --summary <text> [--wake <text>] [--silent true|false] | unread | mark-read --through <seq> | unprocessed | mark-processed --through <seq> | processed-init [--held-lock] | list [--recent <n>] | startup-replay"
+        }
+      ],
+      "isError": true,
+      "timestamp": 1790784667858
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolCall",
+          "id": "call_5",
+          "name": "fm_branch_outcomes",
+          "arguments": {
+            "recent": 2
+          }
+        }
+      ],
+      "api": "openai-completions",
+      "provider": "fm-local",
+      "model": "fm-model",
+      "usage": {
+        "input": 10,
+        "output": 10,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 20,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "stopReason": "toolUse",
+      "timestamp": 1790784667859,
+      "responseId": "completion-5",
+      "rawStopReason": "tool_calls",
+      "thinkingLevel": "off"
+    },
+    {
+      "role": "toolResult",
+      "toolCallId": "call_5",
+      "toolName": "fm_branch_outcomes",
+      "content": [
+        {
+          "type": "text",
+          "text": "(no branch outcomes recorded)"
+        }
+      ],
+      "isError": false,
+      "timestamp": 1790784667889
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Done."
+        }
+      ],
+      "api": "openai-completions",
+      "provider": "fm-local",
+      "model": "fm-model",
+      "usage": {
+        "input": 10,
+        "output": 10,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 20,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "stopReason": "stop",
+      "timestamp": 1790784667890,
+      "responseId": "completion-6",
+      "rawStopReason": "stop",
+      "thinkingLevel": "off"
+    }
+  ]
+}

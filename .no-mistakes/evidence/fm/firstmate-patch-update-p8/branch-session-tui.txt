@@ -1,0 +1,37 @@
+]133;A[49m                                                                                                    [49m
+[49m [39mRead branch outcomes.                                                                              [49m
+]133;B]133;C[49m                                                                                                    [49m
+
+[49m                                                                                                    [49m
+[49m [39mfm_branch_outcomes[39m                                                                                 [49m
+[49m [39m[2m(no branch outcomes recorded)[22;39m                                                                      [49m
+[49m                                                                                                    [49m
+
+[49m                                                                                                    [49m
+[49m [39mfm_branch_outcomes[39m                                                                                 [49m
+[49m [39m[2m  recent: 0[22;39m                                                                                        [49m
+[49m [39m[2m(no branch outcomes recorded)[22;39m                                                                      [49m
+[49m                                                                                                    [49m
+
+[49m                                                                                                    [49m
+[49m [39mfm_branch_outcomes[39m                                                                                 [49m
+[49m [39m[2m  recent: 1.5[22;39m                                                                                      [49m
+[49m [39m[2m(no branch outcomes recorded)[22;39m                                                                      [49m
+[49m                                                                                                    [49m
+
+[49m                                                                                                    [49m
+[49m [39mfm_branch_outcomes[39m                                                                                 [49m
+[49m [39m[2m  recent: 2e+100[22;39m                                                                                   [49m
+[49m [39m[2mcould not read the outcome store: fm-branch-outcome.sh exited 2: usage: fm-branch-outcome.sh       [49m
+[49m [2mappend --task <id> --verdict routine|captain --summary <text> [--wake <text>] [--silent            [49m
+[49m [2mtrue|false] | unread | mark-read --through <seq> | unprocessed | mark-processed --through <seq> |  [49m
+[49m [2mprocessed-init [--held-lock] | list [--recent <n>] | startup-replay[22;39m                                [49m
+[49m                                                                                                    [49m
+
+[49m                                                                                                    [49m
+[49m [39mfm_branch_outcomes[39m                                                                                 [49m
+[49m [39m[2m  recent: 2[22;39m                                                                                        [49m
+[49m [39m[2m(no branch outcomes recorded)[22;39m                                                                      [49m
+[49m                                                                                                    [49m
+]133;A
+]133;B]133;C Done.                                                                                              
