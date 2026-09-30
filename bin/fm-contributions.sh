@@ -283,9 +283,16 @@ settle_final() { # canonical-url task... : copy the URL's final observation to e
       jq -n --slurpfile final "$TMP/final.json" '
         $final[0] + {error:null,pending:[],notified:[]}' > "$TMP/row.json"
       write_record "$task" "$TMP/row.json"
-    elif jq -e '.error != null' "$TMP/old.json" >/dev/null; then
-      jq '.error = null' "$TMP/old.json" > "$TMP/row.json"
-      write_record "$task" "$TMP/row.json"
+    else
+      # Recover owners left open by an interrupted shared observation without
+      # copying another task's verdict or acknowledgement state.
+      jq --slurpfile final "$TMP/final.json" '
+        . + {checked_at:$final[0].checked_at,observation:$final[0].observation,error:null}' \
+        "$TMP/old.json" > "$TMP/row.json"
+      if ! jq -ne --slurpfile old "$TMP/old.json" --slurpfile row "$TMP/row.json" \
+        '$old[0] == $row[0]' >/dev/null; then
+        write_record "$task" "$TMP/row.json"
+      fi
     fi
   done
 }

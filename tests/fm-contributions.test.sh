@@ -709,6 +709,81 @@ test_late_owner_inherits_terminal_observation() {
   pass 'a late owner inherits a terminal observation without a forge read or wake'
 }
 
+test_interrupted_terminal_fanout_recovers() {
+  local mode error home out later=2026-09-17T08:00:00Z
+  for mode in merged closed; do
+    for error in null '"forge observation unavailable or changed during read"'; do
+      home=$(new_home "interrupted-$mode-$(printf '%s' "$error" | wc -c | tr -d ' ')")
+      forge_home "$home"
+      wrap_forge "$home"
+      record "$home" duplicate 8 open mergeable
+      mutate_record "$home" duplicate ".records[0] |= (. + {
+        checked_at:\"2026-09-15T08:00:00Z\",error:$error,
+        verdict:{head:\"$HEAD_A\",actor:\"fleet\",source:\"https://github.com/o/r/pull/8#issuecomment-42\",summary:\"owner verdict\"},
+        seen:[\"acknowledged\",\"owner-pending\"],notified:[\"acknowledged\"],
+        pending:[{token:\"owner-pending\",type:\"comment\",source:\"https://github.com/o/r/pull/8#issuecomment-42\",body:\"owner signal\"}],
+        owner_note:\"retained task field\"})
+        | .records += [.records[0] + {url:\"https://github.com/o/r/pull/99\",error:null,
+          observation:(.records[0].observation + {state:\"closed\"}),pending:[]}]"
+      cp "$home/data/duplicate/contributions.json" "$home/prior.json"
+      # Interrupt publication after delivery has received the terminal read.
+      cat > "$home/fakebin/mv" <<'SH'
+#!/bin/sh
+for destination do
+  if [ -f "$FORGE/interrupt" ] && [ "$destination" = "$FM_DATA_OVERRIDE/duplicate/contributions.json" ]; then
+    printf 'fixture interrupted owner publication\n' >&2
+    exit 1
+  fi
+done
+exec /bin/mv "$@"
+SH
+      chmod +x "$home/fakebin/mv"
+      : > "$home/forge/interrupt"
+      printf '%s\n' "$mode" > "$home/forge/state"
+      printf '%s\n' "$HEAD_B" > "$home/forge/head"
+      if with_home "$home" "$ROOT/bin/fm-contributions.sh" poll > "$home/interrupted.out" 2> "$home/interrupted.err"; then
+        fail "owner publication was not interrupted ($mode, $error)"
+      fi
+      jq -e --arg mode "$mode" '.records[0].observation.state == $mode' "$home/data/delivery/contributions.json" >/dev/null \
+        || fail 'interruption occurred before the first owner received the terminal observation'
+      cmp -s "$home/prior.json" "$home/data/duplicate/contributions.json" \
+        || fail 'interruption did not leave the other owner with its prior open record'
+      cp "$home/data/delivery/contributions.json" "$home/final.json"
+      rm "$home/forge/interrupt"
+      : > "$home/forge/calls"
+      printf 'down\n' > "$home/forge/fault"
+      out=$(with_home "$home" env FM_CONTRIBUTIONS_NOW="$later" "$ROOT/bin/fm-contributions.sh" poll) \
+        || fail "interrupted terminal publication did not recover ($mode, $error)"
+      [ -z "$out" ] || fail "terminal recovery printed a wake ($mode, $error): $out"
+      jq -e --slurpfile final "$home/final.json" --slurpfile prior "$home/prior.json" '
+        (.records[] | select(.url == "https://github.com/o/r/pull/8")) as $owner
+        | $final[0].records[0] as $terminal | $prior[0].records[0] as $old
+        | $owner.error == null and $owner.checked_at == $terminal.checked_at
+        and $owner.observation == $terminal.observation
+        and ($owner | del(.error,.checked_at,.observation)) == ($old | del(.error,.checked_at,.observation))
+        and (.records[] | select(.url == "https://github.com/o/r/pull/99")) == $prior[0].records[1]' "$home/data/duplicate/contributions.json" >/dev/null \
+        || fail "existing open owner did not inherit the terminal observation while retaining its own fields ($mode, $error)"
+      NOW=$later bearings "$home" | jq -e '.contributions.known == 2 and .contributions.checked == 2
+        and .contributions.counts.nobody == 2 and .contributions.complete == true' >/dev/null \
+        || fail 'recovered terminal owners remained open or expired in Bearings'
+      with_home "$home" "$ROOT/bin/fm-contributions.sh" pending | jq -e '
+        length == 1 and .[0].task == "duplicate" and .[0].token == "owner-pending"' >/dev/null \
+        || fail 'terminal recovery lost independent owner acknowledgement'
+      with_home "$home" "$ROOT/bin/fm-contributions.sh" ack duplicate https://github.com/o/r/pull/8 owner-pending \
+        || fail 'could not acknowledge the recovered owner signal'
+      cp "$home/data/duplicate/contributions.json" "$home/settled.json"
+      out=$(with_home "$home" env FM_CONTRIBUTIONS_NOW="$later" "$ROOT/bin/fm-contributions.sh" poll) \
+        || fail 'repeat terminal recovery poll failed'
+      [ -z "$out" ] || fail "repeat terminal recovery printed a wake: $out"
+      cmp -s "$home/settled.json" "$home/data/duplicate/contributions.json" \
+        || fail 'repeat terminal recovery changed the settled owner or resurrected an acknowledged signal'
+      [ ! -s "$home/forge/calls" ] || fail 'terminal recovery or replay made an additional forge read'
+      [ ! -s "$home/state/.wake-queue" ] || fail 'terminal recovery or replay enqueued a wake'
+    done
+  done
+  pass 'interrupted merged/closed publication refreshes existing owners and preserves acknowledgements without reads or wakes'
+}
+
 test_done_task_open_pr_still_observed() {
   local home later=2026-09-17T08:00:00Z
   home=$(new_home done-open)
@@ -789,7 +864,7 @@ test_late_owner_keeps_failure_episode_suppressed() {
 }
 
 failures=0
-for test_name in test_actor_coverage test_stale_verdict test_unchecked_is_not_silence test_newest_check_has_no_verdict test_comment_wake test_review_wake test_inline_wake test_ready_issue_wake test_fresh_issue_requires_maintainer test_missing_lane_remains_missing test_partial_freshness_keeps_measured_rows test_malformed_record_cannot_prove_silence test_issue_timeline_and_exact_ack test_verdict_retains_judged_head test_observed_replacement_refreshes_verdict test_unobserved_head_leaves_verdict_unknown test_away_yolo_is_fleet_work test_away_yolo_cross_home_is_fleet_work test_retired_and_unsupported_coverage test_unsupported_forge_is_not_fleet_work test_held_unsupported_forge_is_not_captain_work test_shared_contribution_signal_wakes_once test_watcher_keeps_diagnostics_separate_from_contribution_wakes test_expired_child_unsupported_forge_stays_unmeasured test_watcher_surfaces_new_contribution_once test_home_summary_coverage test_unreadable_pending_is_not_empty test_budget_refusal_between_calls test_budget_bounded_call_timeout test_genuine_failure_near_deadline_is_unavailable test_shared_url_observed_once test_terminal_contribution_settles test_late_owner_inherits_terminal_observation test_done_task_open_pr_still_observed test_failure_wakes_once_per_episode test_late_owner_keeps_failure_episode_suppressed; do
+for test_name in test_actor_coverage test_stale_verdict test_unchecked_is_not_silence test_newest_check_has_no_verdict test_comment_wake test_review_wake test_inline_wake test_ready_issue_wake test_fresh_issue_requires_maintainer test_missing_lane_remains_missing test_partial_freshness_keeps_measured_rows test_malformed_record_cannot_prove_silence test_issue_timeline_and_exact_ack test_verdict_retains_judged_head test_observed_replacement_refreshes_verdict test_unobserved_head_leaves_verdict_unknown test_away_yolo_is_fleet_work test_away_yolo_cross_home_is_fleet_work test_retired_and_unsupported_coverage test_unsupported_forge_is_not_fleet_work test_held_unsupported_forge_is_not_captain_work test_shared_contribution_signal_wakes_once test_watcher_keeps_diagnostics_separate_from_contribution_wakes test_expired_child_unsupported_forge_stays_unmeasured test_watcher_surfaces_new_contribution_once test_home_summary_coverage test_unreadable_pending_is_not_empty test_budget_refusal_between_calls test_budget_bounded_call_timeout test_genuine_failure_near_deadline_is_unavailable test_shared_url_observed_once test_terminal_contribution_settles test_late_owner_inherits_terminal_observation test_interrupted_terminal_fanout_recovers test_done_task_open_pr_still_observed test_failure_wakes_once_per_episode test_late_owner_keeps_failure_episode_suppressed; do
   ( "$test_name" ) || failures=$((failures + 1))
 done
 [ "$failures" -eq 0 ] || fail "$failures contribution regressions"
